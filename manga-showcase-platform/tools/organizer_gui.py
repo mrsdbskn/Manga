@@ -293,6 +293,16 @@ class MangaOrganizerApp:
         )
         self.meta_preview_lbl.grid(row=0, column=2, padx=16, pady=10, sticky="w")
 
+        # 4. MangaPlus URL Downloader
+        mp_label = ctk.CTkLabel(content_frame, text="Or Download Chapter Directly from MangaPlus:", font=ctk.CTkFont(size=13, weight="bold"))
+        mp_label.grid(row=5, column=0, sticky="w", padx=16, pady=(10, 2))
+
+        self.mp_entry = ctk.CTkEntry(content_frame, placeholder_text="e.g. https://mangaplus.shueisha.co.jp/viewer/7002654", width=520)
+        self.mp_entry.grid(row=6, column=0, sticky="ew", padx=16, pady=4)
+
+        download_mp_btn = ctk.CTkButton(content_frame, text="📥 Fetch MangaPlus", width=110, fg_color="#e11d48", hover_color="#be123c", command=self._start_mangaplus_thread)
+        download_mp_btn.grid(row=6, column=1, padx=(0, 16), pady=4)
+
         # Action Buttons Row
         btn_frame = ctk.CTkFrame(self.root, fg_color="transparent")
         btn_frame.pack(fill="x", padx=16, pady=8)
@@ -428,6 +438,33 @@ class MangaOrganizerApp:
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def _start_mangaplus_thread(self):
+        url = self.mp_entry.get().strip()
+        out = self.out_entry.get().strip()
+        if not url:
+            messagebox.showerror("Error", "Please paste a MangaPlus viewer URL or chapter ID first.")
+            return
+
+        self.progress_bar.set(0.2)
+
+        def worker():
+            try:
+                self.log(f"Connecting to MangaPlus: {url}...")
+                try:
+                    from tools.mangaplus_downloader import download_mangaplus_chapter
+                except ImportError:
+                    from mangaplus_downloader import download_mangaplus_chapter
+
+                archive = download_mangaplus_chapter(url, output_dir=out, log_callback=self.log, sync_catalog=True)
+                self.progress_bar.set(1.0)
+                self.log(f"SUCCESS: MangaPlus chapter saved at: {archive}")
+                messagebox.showinfo("Success", f"MangaPlus chapter downloaded & indexed successfully!\n{archive}")
+            except Exception as e:
+                self.log(f"ERROR: {e}")
+                messagebox.showerror("Download Failed", str(e))
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _sync_catalog(self):
         out = self.out_entry.get().strip()
         self.log(f"Syncing catalog index for directory: {out}...")
@@ -449,14 +486,25 @@ def run_cli():
     parser.add_argument("--sample", action="store_true", help="Generate a sample dummy volume CBZ")
     parser.add_argument("--pages", type=int, default=12, help="Page count for sample volume")
     parser.add_argument("--sync-only", action="store_true", help="Only sync catalog index.json")
+    parser.add_argument("--mangaplus", type=str, help="Download chapter from MangaPlus viewer URL")
 
     args, unknown = parser.parse_known_args()
 
     # Determine if we should run GUI or CLI
-    if args.cli or args.sample or args.source or args.sync_only or not CTK_AVAILABLE or not os.environ.get("DISPLAY", None) and sys.platform.startswith("linux"):
+    if args.cli or args.sample or args.source or args.sync_only or args.mangaplus or not CTK_AVAILABLE or not os.environ.get("DISPLAY", None) and sys.platform.startswith("linux"):
         # Run CLI mode
         out_dir = Path(args.output).resolve()
         index_dest = out_dir / "index.json"
+
+        if args.mangaplus:
+            print(f"[CLI] Downloading MangaPlus chapter: {args.mangaplus}...")
+            try:
+                from tools.mangaplus_downloader import download_mangaplus_chapter
+            except ImportError:
+                from mangaplus_downloader import download_mangaplus_chapter
+            archive = download_mangaplus_chapter(args.mangaplus, output_dir=out_dir)
+            print(f"[CLI] Finished! Archive: {archive}")
+            return 0
 
         if args.sample:
             print(f"[CLI] Generating sample Volume {args.volume}...")

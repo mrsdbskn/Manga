@@ -106,9 +106,20 @@ python organizer_gui.py --sample --volume 1 --output ../frontend/public/comics
 # Pack an existing folder into Volume 3
 python organizer_gui.py --cli --source "D:/Manga/Chapters" --volume 3 --output ../frontend/public/comics
 
+# Download a chapter directly from MangaPlus via viewer URL
+python organizer_gui.py --mangaplus https://mangaplus.shueisha.co.jp/viewer/7002654
+
+# Or invoke the dedicated mangaplus_downloader CLI
+python mangaplus_downloader.py https://mangaplus.shueisha.co.jp/viewer/7002654 -o ../frontend/public/comics
+
 # Sync index.json only
 python catalog_indexer.py --scan ../frontend/public/comics --output ../frontend/public/comics/index.json
 ```
+
+### 4. Direct MangaPlus Ingestion
+MangaPlus enforces dynamic `SESSION-TOKEN` authentication headers to prevent bot bans. We provide:
+- **`mangaplus_downloader.py`**: Automatically generates valid UUIDv1 session tokens, queries `https://jumpg-webapi.tokyo-cdn.com/api/manga_viewer`, decrypts the XOR-scrambled image streams, packages the chapter into a `.cbz`, injects `ComicInfo.xml`, and updates `index.json`.
+- **`mloader` Patch**: Applied automatic patch to `mloader` library to include the required `SESSION-TOKEN` header and Windows path fix, allowing the standard `mloader <URL>` command to function seamlessly.
 
 ### 4. Embedded ComicInfo.xml Schema
 Archives generated adhere to the ComicRack specification:
