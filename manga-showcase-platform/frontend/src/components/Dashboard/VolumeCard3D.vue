@@ -26,10 +26,10 @@
         >
           <!-- Cover Image or High-Aesthetic Graphic -->
           <img 
-            v-if="volume.coverUrl"
+            v-if="volume.coverUrl && !imageError"
             :src="volume.coverUrl" 
             :alt="volume.title"
-            class="w-full h-full object-cover object-center"
+            class="w-full h-full object-cover object-center pointer-events-none select-none"
             @error="onImageError"
             loading="lazy"
           />
@@ -364,8 +364,9 @@ function openReader() {
   libraryStore.openReader(props.volume);
 }
 
-function onImageError(e) {
-  // If remote cover fails, fallback cleanly
-  e.target.style.display = 'none';
+const imageError = ref(false);
+
+function onImageError() {
+  imageError.value = true;
 }
 </script>

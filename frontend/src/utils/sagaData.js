@@ -129,13 +129,13 @@ export const CANON_SAGAS = [
     id: "final-saga",
     name: "Final Saga",
     japaneseName: "最終章",
-    volumeRange: [105, 112],
-    chapterRange: [1058, 1120],
+    volumeRange: [105, 115],
+    chapterRange: [1058, 1200],
     bannerUrl: "assets/arcs/final-saga.webp",
     themeColor: "#e11d48",
     badgeColor: "bg-red-500/20 text-red-300 border-red-500/30",
-    description: "The Straw Hats arrive at the futuristic island of Egghead, meeting Dr. Vegapunk and unveiling the ancient secrets that threaten World Government rule.",
-    arcs: ["Egghead Arc"]
+    description: "The Straw Hats arrive at the futuristic island of Egghead and onward toward Elbaf, meeting Dr. Vegapunk, the Sun God Nika revelations, and the ancient secrets shaking the world.",
+    arcs: ["Egghead", "Elbaf"]
   }
 ];
 

@@ -134,11 +134,11 @@ CANON_SAGAS: List[Dict[str, Any]] = [
         "id": "final-saga",
         "name": "Final Saga",
         "japaneseName": "最終章",
-        "volumeRange": [105, 110],
-        "chapterRange": [1058, 1120],
+        "volumeRange": [105, 115],
+        "chapterRange": [1058, 1200],
         "bannerUrl": "assets/arcs/final-saga.webp",
         "themeColor": "#e11d48",
-        "description": "The Straw Hats arrive at the futuristic island of Egghead, meeting Dr. Vegapunk and unveiling the ancient secrets that threaten World Government rule.",
+        "description": "The Straw Hats arrive at the futuristic island of Egghead and onward to Elbaf, meeting Dr. Vegapunk and unveiling ancient world-shattering secrets.",
     },
 ]
 
@@ -326,6 +326,7 @@ def get_volume_meta(vol_num: int) -> Dict[str, Any]:
         }
 
     saga = get_saga_for_volume(vol_num)
+    cover_file = f"cover-v{vol_num:02d}.jpg"
     return {
         "id": f"one-piece-v{vol_num:02d}",
         "volumeNumber": vol_num,
@@ -337,7 +338,7 @@ def get_volume_meta(vol_num: int) -> Dict[str, Any]:
         "chapterStart": info.get("ch_start", 1),
         "chapterEnd": info.get("ch_end", 1),
         "pageCount": info.get("pages", 200),
-        "coverUrl": f"comics/covers/cover-v{vol_num:02d}.webp",
+        "coverUrl": f"comics/covers/{cover_file}",
         "spineColor": info.get("color", saga["themeColor"]),
         "releaseDate": info.get("releaseDate", ""),
         "summary": info.get("summary", ""),
@@ -353,7 +354,7 @@ def scan_and_index_volumes(
 ) -> Dict[str, Any]:
     """
     Scans comics_dir for CBZ files, parses ComicInfo.xml metadata if present,
-    correlates with canon saga taxonomy, extracts first page cover if needed,
+    correlates with canon saga taxonomy, maps official Viz covers,
     and returns/writes the master index.json.
     """
     comics_path = Path(comics_dir).resolve()
@@ -365,12 +366,25 @@ def scan_and_index_volumes(
     # Master list of volume entries mapped by volume number
     catalog_volumes: Dict[int, Dict[str, Any]] = {}
 
-    # 1. First, populate all known canon volumes from our taxonomy so the showcase is rich
-    for v_num in range(1, 13):  # East Blue complete
-        catalog_volumes[v_num] = get_volume_meta(v_num)
-    # Add notable milestone volumes across sagas
-    for v_num in [14, 16, 22, 25, 30, 41, 44, 59, 61, 89, 100, 103, 105, 108]:
-        catalog_volumes[v_num] = get_volume_meta(v_num)
+    # 1. Populate all canon volumes covering all sagas.
+    # Check covers_dir for the highest available cover number (at least 108, up to 113)
+    max_vol = 108
+    if covers_dir.exists():
+        for f in covers_dir.glob("cover-v*.*"):
+            m = re.search(r"cover-v(\d+)", f.stem)
+            if m:
+                v_num = int(m.group(1))
+                if v_num > max_vol:
+                    max_vol = v_num
+
+    for v_num in range(1, max_vol + 1):
+        meta = get_volume_meta(v_num)
+        # Verify cover file existence
+        if (covers_dir / f"cover-v{v_num:02d}.jpg").exists():
+            meta["coverUrl"] = f"comics/covers/cover-v{v_num:02d}.jpg"
+        elif (covers_dir / f"cover-v{v_num:02d}.webp").exists():
+            meta["coverUrl"] = f"comics/covers/cover-v{v_num:02d}.webp"
+        catalog_volumes[v_num] = meta
 
     # 2. Inspect physical files in comics_dir
     volume_pattern = re.compile(
@@ -378,6 +392,8 @@ def scan_and_index_volumes(
     )
 
     cbz_files = list(comics_path.glob("*.cbz")) + list(comics_path.glob("*.zip"))
+    # Sort files so English releases take precedence over fallback language versions
+    cbz_files.sort(key=lambda p: (1 if "English" in p.name else 0, p.name))
     for file_path in cbz_files:
         vol_num: Optional[int] = None
         match = volume_pattern.search(file_path.stem)
@@ -391,17 +407,27 @@ def scan_and_index_volumes(
                 vol_num = int(comic_info["Volume"])
 
         if vol_num is None:
-            # Fallback to 1 if couldn't detect
-            vol_num = 1
+            ch_match = re.search(r"(?:chapter|c)\s*(\d+)", file_path.stem, re.IGNORECASE)
+            if ch_match:
+                ch_val = int(ch_match.group(1))
+                if ch_val >= 1100:
+                    vol_num = 112
+                else:
+                    vol_num = max(1, (ch_val - 1) // 10 + 1)
+            else:
+                vol_num = 1
 
-        base_meta = get_volume_meta(vol_num)
+        base_meta = catalog_volumes.get(vol_num, get_volume_meta(vol_num))
         base_meta["cbzFile"] = file_path.name
         base_meta["available"] = True
         base_meta["fileSize"] = file_path.stat().st_size
 
         if comic_info:
             if comic_info.get("Title"):
-                base_meta["title"] = comic_info["Title"]
+                clean_title = comic_info["Title"]
+                if clean_title.startswith("Chapter ") and ": Chapter " in clean_title:
+                    clean_title = clean_title.split(": ", 1)[1]
+                base_meta["title"] = clean_title
             if comic_info.get("Summary"):
                 base_meta["summary"] = comic_info["Summary"]
             if comic_info.get("StartChapter") and comic_info["StartChapter"].isdigit():
@@ -410,9 +436,18 @@ def scan_and_index_volumes(
                 base_meta["chapterEnd"] = int(comic_info["EndChapter"])
             if comic_info.get("PageCount") and comic_info["PageCount"].isdigit():
                 base_meta["pageCount"] = int(comic_info["PageCount"])
+        else:
+            # Fallback title from filename if pattern is Chapter XXX - Subtitle
+            file_title_match = re.match(r"Chapter\s+(\d+)\s*[-_:]\s*(.+)", file_path.stem, re.IGNORECASE)
+            if file_title_match:
+                base_meta["title"] = f"Chapter {file_title_match.group(1)}: {file_title_match.group(2).strip()}"
 
-        # Extract cover if possible
-        if extract_covers and PIL_AVAILABLE:
+        # Retain official Viz cover if present; otherwise extract first page
+        if (covers_dir / f"cover-v{vol_num:02d}.jpg").exists():
+            base_meta["coverUrl"] = f"comics/covers/cover-v{vol_num:02d}.jpg"
+        elif (covers_dir / f"cover-v{vol_num:02d}.webp").exists():
+            base_meta["coverUrl"] = f"comics/covers/cover-v{vol_num:02d}.webp"
+        elif extract_covers and PIL_AVAILABLE:
             cover_dest = covers_dir / f"cover-v{vol_num:02d}.webp"
             if not cover_dest.exists():
                 try:
@@ -428,7 +463,6 @@ def scan_and_index_volumes(
                             image_files.sort()
                             img_data = z.read(image_files[0])
                             img = Image.open(io.BytesIO(img_data)).convert("RGB")
-                            # Resize to max 600px width for fast loading
                             img.thumbnail((600, 900), Image.Resampling.LANCZOS)
                             img.save(cover_dest, "WEBP", quality=85)
                             base_meta["coverUrl"] = f"comics/covers/cover-v{vol_num:02d}.webp"

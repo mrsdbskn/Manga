@@ -15,10 +15,10 @@
           style="transform: translateZ(9px);"
         >
           <img 
-            v-if="volume.coverUrl"
+            v-if="volume.coverUrl && !imageError"
             :src="volume.coverUrl" 
             :alt="volume.title"
-            class="w-full h-full object-cover"
+            class="w-full h-full object-cover pointer-events-none select-none"
             @error="onImageError"
             loading="lazy"
           />
@@ -174,7 +174,9 @@ function openReader() {
   libraryStore.openReader(props.volume);
 }
 
-function onImageError(e) {
-  e.target.style.display = 'none';
+const imageError = ref(false);
+
+function onImageError() {
+  imageError.value = true;
 }
 </script>

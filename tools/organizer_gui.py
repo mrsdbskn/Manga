@@ -293,15 +293,52 @@ class MangaOrganizerApp:
         )
         self.meta_preview_lbl.grid(row=0, column=2, padx=16, pady=10, sticky="w")
 
-        # 4. MangaPlus URL Downloader
-        mp_label = ctk.CTkLabel(content_frame, text="Or Download Chapter Directly from MangaPlus:", font=ctk.CTkFont(size=13, weight="bold"))
-        mp_label.grid(row=5, column=0, sticky="w", padx=16, pady=(10, 2))
+        # 4. MangaPlus URL Downloader & Language Selector
+        mp_container = ctk.CTkFrame(content_frame, fg_color="transparent")
+        mp_container.grid(row=5, column=0, columnspan=2, sticky="ew", padx=16, pady=(10, 4))
 
-        self.mp_entry = ctk.CTkEntry(content_frame, placeholder_text="e.g. https://mangaplus.shueisha.co.jp/viewer/7002654", width=520)
-        self.mp_entry.grid(row=6, column=0, sticky="ew", padx=16, pady=4)
+        mp_label = ctk.CTkLabel(mp_container, text="Or Download Chapter Directly from MangaPlus:", font=ctk.CTkFont(size=13, weight="bold"))
+        mp_label.pack(side="left", anchor="w")
 
-        download_mp_btn = ctk.CTkButton(content_frame, text="📥 Fetch MangaPlus", width=110, fg_color="#e11d48", hover_color="#be123c", command=self._start_mangaplus_thread)
-        download_mp_btn.grid(row=6, column=1, padx=(0, 16), pady=4)
+        lang_label = ctk.CTkLabel(mp_container, text="Target Language:", font=ctk.CTkFont(size=12, weight="bold"), text_color="#a8c7fa")
+        lang_label.pack(side="right", padx=(0, 4))
+
+        mp_input_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+        mp_input_frame.grid(row=6, column=0, columnspan=2, sticky="ew", padx=16, pady=(0, 10))
+
+        self.mp_entry = ctk.CTkEntry(mp_input_frame, placeholder_text="e.g. https://mangaplus.shueisha.co.jp/viewer/7002654", width=420)
+        self.mp_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        self.lang_menu = ctk.CTkOptionMenu(
+            mp_input_frame,
+            values=[
+                "English (eng)",
+                "Spanish (spa)",
+                "French (fre)",
+                "Indonesian (ind)",
+                "Portuguese (por)",
+                "German (deu)",
+                "Thai (tha)",
+                "Russian (rus)",
+                "Vietnamese (vie)",
+            ],
+            width=140,
+            fg_color="#1e2235",
+            button_color="#2d3246",
+        )
+        self.lang_menu.set("English (eng)")
+        self.lang_menu.pack(side="left", padx=(0, 8))
+
+        download_mp_btn = ctk.CTkButton(
+            mp_input_frame, 
+            text="📥 Fetch Chapter", 
+            width=120, 
+            fg_color="#e11d48", 
+            hover_color="#be123c", 
+            font=ctk.CTkFont(weight="bold"),
+            command=self._start_mangaplus_thread
+        )
+        download_mp_btn.pack(side="left")
 
         # Action Buttons Row
         btn_frame = ctk.CTkFrame(self.root, fg_color="transparent")
@@ -445,19 +482,29 @@ class MangaOrganizerApp:
             messagebox.showerror("Error", "Please paste a MangaPlus viewer URL or chapter ID first.")
             return
 
+        selected_lang_raw = self.lang_menu.get()
+        match = re.search(r"\(([a-z]{3})\)", selected_lang_raw, re.IGNORECASE)
+        target_lang = match.group(1).lower() if match else "eng"
+
         self.progress_bar.set(0.2)
 
         def worker():
             try:
-                self.log(f"Connecting to MangaPlus: {url}...")
+                self.log(f"Connecting to MangaPlus ({target_lang.upper()}): {url}...")
                 try:
                     from tools.mangaplus_downloader import download_mangaplus_chapter
                 except ImportError:
                     from mangaplus_downloader import download_mangaplus_chapter
 
-                archive = download_mangaplus_chapter(url, output_dir=out, log_callback=self.log, sync_catalog=True)
+                archive = download_mangaplus_chapter(
+                    url, 
+                    output_dir=out, 
+                    target_lang=target_lang,
+                    log_callback=self.log, 
+                    sync_catalog=True
+                )
                 self.progress_bar.set(1.0)
-                self.log(f"SUCCESS: MangaPlus chapter saved at: {archive}")
+                self.log(f"SUCCESS: Chapter saved at: {archive}")
                 messagebox.showinfo("Success", f"MangaPlus chapter downloaded & indexed successfully!\n{archive}")
             except Exception as e:
                 self.log(f"ERROR: {e}")
@@ -487,6 +534,7 @@ def run_cli():
     parser.add_argument("--pages", type=int, default=12, help="Page count for sample volume")
     parser.add_argument("--sync-only", action="store_true", help="Only sync catalog index.json")
     parser.add_argument("--mangaplus", type=str, help="Download chapter from MangaPlus viewer URL")
+    parser.add_argument("--lang", type=str, default="eng", help="Target language (eng, spa, fre, ind, por, deu, tha, rus, vie) [default: eng]")
 
     args, unknown = parser.parse_known_args()
 
@@ -497,12 +545,12 @@ def run_cli():
         index_dest = out_dir / "index.json"
 
         if args.mangaplus:
-            print(f"[CLI] Downloading MangaPlus chapter: {args.mangaplus}...")
+            print(f"[CLI] Downloading MangaPlus chapter ({args.lang.upper()}): {args.mangaplus}...")
             try:
                 from tools.mangaplus_downloader import download_mangaplus_chapter
             except ImportError:
                 from mangaplus_downloader import download_mangaplus_chapter
-            archive = download_mangaplus_chapter(args.mangaplus, output_dir=out_dir)
+            archive = download_mangaplus_chapter(args.mangaplus, output_dir=out_dir, target_lang=args.lang)
             print(f"[CLI] Finished! Archive: {archive}")
             return 0
 
