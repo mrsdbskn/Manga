@@ -211,6 +211,30 @@ def resolve_chapter_to_language(
         return chapter_id, target_lang
 
 
+def resolve_chapter_number_from_api(chapter_id: int) -> int:
+    """Resolves an internal MangaPlus chapter ID into the canonical chapter number."""
+    try:
+        r = requests.get(
+            f"{API_TITLE_DETAIL_URL}?title_id=100020",
+            headers={"SESSION-TOKEN": str(uuid.uuid1()), "User-Agent": "Mozilla/5.0"},
+            timeout=10,
+        )
+        if r.status_code == 200 and Response is not None:
+            res = Response.FromString(r.content)
+            if res.HasField("success") and res.success.HasField("title_detail_view"):
+                detail = res.success.title_detail_view
+                for g in detail.chapter_list_group:
+                    for lst in (g.first_chapter_list, g.mid_chapter_list, g.last_chapter_list):
+                        for c in lst:
+                            if c.chapter_id == chapter_id:
+                                m = re.search(r"(\d+)", c.name)
+                                if m:
+                                    return int(m.group(1))
+    except Exception:
+        pass
+    return chapter_id
+
+
 def download_mangaplus_chapter(
     chapter_url_or_id: str | int,
     output_dir: str | Path = "../frontend/public/comics",
@@ -266,8 +290,22 @@ def download_mangaplus_chapter(
     except DecodeError as err:
         raise RuntimeError(f"Protobuf decode error: {err}")
 
-    if not api_res.HasField("success"):
-        raise RuntimeError("MangaPlus returned an error or unpublished chapter.")
+
+    if not api_res.HasField("success") or not api_res.success.HasField("manga_viewer"):
+        log_callback(f"Notice: MangaPlus chapter ID {chapter_id} is app-locked on web ('Read on app').")
+        ch_num = resolve_chapter_number_from_api(chapter_id)
+        log_callback(f"Resolved to Chapter {ch_num}. Seamlessly redirecting to MangaDex API...")
+        try:
+            from tools.mangadex_downloader import download_mangadex_chapter
+        except ImportError:
+            from mangadex_downloader import download_mangadex_chapter
+        return download_mangadex_chapter(
+            chapter_num=ch_num,
+            output_dir=out_path,
+            lang=lang_iso,
+            sync_catalog=sync_catalog,
+            log_callback=log_callback,
+        )
 
     viewer = api_res.success.manga_viewer
     series_name = viewer.title_name or "One Piece"
@@ -286,7 +324,19 @@ def download_mangaplus_chapter(
     manga_pages = [p.manga_page for p in viewer.pages if p.HasField("manga_page") and p.manga_page.image_url]
     total_pages = len(manga_pages)
     if total_pages == 0:
-        raise RuntimeError(f"No pages found for chapter {chapter_id} in {lang_label}.")
+        log_callback(f"Notice: No web pages returned for Chapter {chapter_number} on MangaPlus (App-Only chapter).")
+        log_callback(f"Seamlessly downloading Chapter {chapter_number} from MangaDex...")
+        try:
+            from tools.mangadex_downloader import download_mangadex_chapter
+        except ImportError:
+            from mangadex_downloader import download_mangadex_chapter
+        return download_mangadex_chapter(
+            chapter_num=chapter_number,
+            output_dir=out_path,
+            lang=lang_iso,
+            sync_catalog=sync_catalog,
+            log_callback=log_callback,
+        )
 
     log_callback(f"Unpacking {total_pages} decrypted pages...")
 

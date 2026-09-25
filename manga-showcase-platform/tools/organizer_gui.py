@@ -32,9 +32,14 @@ except ImportError:
 try:
     from tools.comic_info import build_comic_info_xml, write_comic_info_to_cbz
     from tools.catalog_indexer import get_volume_meta, scan_and_index_volumes, CANON_VOLUMES_DATA
+    from tools.mangadex_downloader import download_mangadex_chapter
 except ImportError:
     from comic_info import build_comic_info_xml, write_comic_info_to_cbz
     from catalog_indexer import get_volume_meta, scan_and_index_volumes, CANON_VOLUMES_DATA
+    try:
+        from mangadex_downloader import download_mangadex_chapter
+    except ImportError:
+        download_mangadex_chapter = None
 
 
 def natural_sort_key(s: str):
@@ -214,8 +219,8 @@ class MangaOrganizerApp:
     def __init__(self, root: ctk.CTk):
         self.root = root
         self.root.title("One Piece Manga Organizer & Packager — MD3 Edition")
-        self.root.geometry("860x680")
-        self.root.minsize(780, 580)
+        self.root.geometry("860x730")
+        self.root.minsize(780, 600)
 
         # Style configuration
         ctk.set_appearance_mode("Dark")
@@ -339,6 +344,40 @@ class MangaOrganizerApp:
             command=self._start_mangaplus_thread
         )
         download_mp_btn.pack(side="left")
+
+        # 5. MangaDex Chapter Downloader (For app-locked middle chapters)
+        md_container = ctk.CTkFrame(content_frame, fg_color="transparent")
+        md_container.grid(row=7, column=0, columnspan=2, sticky="ew", padx=16, pady=(6, 2))
+
+        md_label = ctk.CTkLabel(md_container, text="Or Download App-Locked Chapters from MangaDex:", font=ctk.CTkFont(size=13, weight="bold"))
+        md_label.pack(side="left", anchor="w")
+
+        md_input_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+        md_input_frame.grid(row=8, column=0, columnspan=2, sticky="ew", padx=16, pady=(0, 10))
+
+        self.md_entry = ctk.CTkEntry(md_input_frame, placeholder_text="Chapter # (e.g. 4, 14, 100...)", width=200)
+        self.md_entry.pack(side="left", padx=(0, 8))
+
+        self.md_edition_menu = ctk.CTkOptionMenu(
+            md_input_frame,
+            values=["Official Colored", "Standard B&W"],
+            width=150,
+            fg_color="#1e2235",
+            button_color="#2d3246",
+        )
+        self.md_edition_menu.set("Official Colored")
+        self.md_edition_menu.pack(side="left", padx=(0, 8))
+
+        download_md_btn = ctk.CTkButton(
+            md_input_frame, 
+            text="📥 Fetch from MangaDex", 
+            width=180, 
+            fg_color="#0284c7", 
+            hover_color="#0369a1", 
+            font=ctk.CTkFont(weight="bold"),
+            command=self._start_mangadex_thread
+        )
+        download_md_btn.pack(side="left")
 
         # Action Buttons Row
         btn_frame = ctk.CTkFrame(self.root, fg_color="transparent")
@@ -512,6 +551,46 @@ class MangaOrganizerApp:
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def _start_mangadex_thread(self):
+        ch_str = self.md_entry.get().strip()
+        if not ch_str:
+            messagebox.showwarning("Missing Chapter", "Please enter a chapter number (e.g. 4, 14, 100).")
+            return
+
+        edition = "colored" if "colored" in self.md_edition_menu.get().lower() else "bw"
+        out = self.out_entry.get().strip()
+
+        # Extract language ISO from lang_menu
+        raw_lang = self.lang_menu.get()
+        m = re.search(r"\((.*?)\)", raw_lang)
+        target_lang = m.group(1).lower() if m else "en"
+        lang_iso_map = {"eng": "en", "spa": "es", "fre": "fr", "ind": "id", "por": "pt-br", "deu": "de", "tha": "th", "rus": "ru", "vie": "vi"}
+        lang_code = lang_iso_map.get(target_lang, target_lang)
+
+        self.log(f"Starting MangaDex download for Chapter {ch_str} ({edition.upper()} edition, lang: {lang_code})...")
+        self.progress_bar.set(0.2)
+
+        def worker():
+            try:
+                if download_mangadex_chapter is None:
+                    raise ImportError("mangadex_downloader module not found.")
+                archive = download_mangadex_chapter(
+                    chapter_num=ch_str,
+                    output_dir=out,
+                    lang=lang_code,
+                    edition=edition,
+                    log_callback=self.log,
+                    sync_catalog=True,
+                )
+                self.progress_bar.set(1.0)
+                self.log(f"SUCCESS: Chapter saved at: {archive}")
+                messagebox.showinfo("Success", f"MangaDex chapter downloaded & indexed successfully!\n{archive}")
+            except Exception as e:
+                self.log(f"ERROR: {e}")
+                messagebox.showerror("Download Failed", str(e))
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _sync_catalog(self):
         out = self.out_entry.get().strip()
         self.log(f"Syncing catalog index for directory: {out}...")
@@ -534,12 +613,14 @@ def run_cli():
     parser.add_argument("--pages", type=int, default=12, help="Page count for sample volume")
     parser.add_argument("--sync-only", action="store_true", help="Only sync catalog index.json")
     parser.add_argument("--mangaplus", type=str, help="Download chapter from MangaPlus viewer URL")
+    parser.add_argument("--mangadex", type=str, help="Download chapter from MangaDex by chapter number (e.g. 4 or 14)")
+    parser.add_argument("--edition", type=str, default="colored", choices=["colored", "bw"], help="Edition for MangaDex (colored or bw) [default: colored]")
     parser.add_argument("--lang", type=str, default="eng", help="Target language (eng, spa, fre, ind, por, deu, tha, rus, vie) [default: eng]")
 
     args, unknown = parser.parse_known_args()
 
     # Determine if we should run GUI or CLI
-    if args.cli or args.sample or args.source or args.sync_only or args.mangaplus or not CTK_AVAILABLE or not os.environ.get("DISPLAY", None) and sys.platform.startswith("linux"):
+    if args.cli or args.sample or args.source or args.sync_only or args.mangaplus or args.mangadex or not CTK_AVAILABLE or not os.environ.get("DISPLAY", None) and sys.platform.startswith("linux"):
         # Run CLI mode
         out_dir = Path(args.output).resolve()
         index_dest = out_dir / "index.json"
@@ -551,6 +632,21 @@ def run_cli():
             except ImportError:
                 from mangaplus_downloader import download_mangaplus_chapter
             archive = download_mangaplus_chapter(args.mangaplus, output_dir=out_dir, target_lang=args.lang)
+            print(f"[CLI] Finished! Archive: {archive}")
+            return 0
+
+        if args.mangadex:
+            lang_iso_map = {"eng": "en", "spa": "es", "fre": "fr", "ind": "id", "por": "pt-br", "deu": "de", "tha": "th", "rus": "ru", "vie": "vi"}
+            lang_code = lang_iso_map.get(args.lang, args.lang)
+            print(f"[CLI] Downloading MangaDex Chapter {args.mangadex} ({args.edition.upper()} edition, lang: {lang_code})...")
+            if download_mangadex_chapter is None:
+                raise ImportError("mangadex_downloader module not found.")
+            archive = download_mangadex_chapter(
+                chapter_num=args.mangadex,
+                output_dir=out_dir,
+                lang=lang_code,
+                edition=args.edition,
+            )
             print(f"[CLI] Finished! Archive: {archive}")
             return 0
 
