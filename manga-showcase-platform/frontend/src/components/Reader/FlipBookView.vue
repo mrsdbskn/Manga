@@ -1,31 +1,38 @@
 <template>
   <div 
-    class="relative w-full h-full flex items-center justify-center overflow-hidden select-none bg-[#0a0c12]"
+    class="relative w-full h-full flex items-center justify-center overflow-hidden select-none bg-black"
     @click="onBackgroundClick"
   >
     <!-- StPageFlip Book Container -->
-    <div class="st-page-flip-container relative flex items-center justify-center w-full h-full max-w-5xl max-h-[90vh] p-4">
+    <div class="st-page-flip-container relative flex items-center justify-center w-full h-full max-w-6xl max-h-[96vh] p-0 sm:p-2">
       <div 
         ref="bookContainerRef" 
-        class="shadow-2xl rounded-sm"
+        class="shadow-2xl rounded-none"
         id="manga-stpageflip-book"
       >
         <!-- Individual Manga Pages -->
         <div 
           v-for="page in pages" 
           :key="page.pageNumber"
-          class="page bg-[#12131a] overflow-hidden flex items-center justify-center relative border border-white/5"
+          class="page bg-black overflow-hidden flex items-center relative border-none"
+          :class="[
+            page.spreadPart === 'right' ? 'justify-end' : page.spreadPart === 'left' ? 'justify-start' : 'justify-center'
+          ]"
           :data-density="page.pageNumber === 1 || page.pageNumber === pages.length ? 'hard' : 'soft'"
         >
           <img 
             :src="page.url" 
             :alt="`Page ${page.pageNumber}`"
-            class="w-full h-full object-contain pointer-events-none"
+            :class="[
+              'w-full h-full pointer-events-none select-none bg-black',
+              page.spreadPart === 'right' ? 'object-cover object-right' : page.spreadPart === 'left' ? 'object-cover object-left' : 'object-contain'
+            ]"
             loading="eager"
           />
           <!-- Page Number Indicator at Bottom -->
-          <div class="absolute bottom-2 right-3 text-[10px] font-mono text-slate-400 bg-black/60 px-1.5 py-0.5 rounded backdrop-blur-sm pointer-events-none">
-            {{ page.pageNumber }}
+          <div class="absolute bottom-2 right-3 text-[10px] font-mono text-slate-400 bg-black/75 px-1.5 py-0.5 rounded backdrop-blur-sm pointer-events-none border border-white/5 flex items-center gap-1">
+            <span v-if="page.isSpread" class="text-amber-400 font-bold text-[8px] tracking-wider">SPREAD</span>
+            <span>{{ page.pageNumber }}</span>
           </div>
         </div>
       </div>
@@ -59,6 +66,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { PageFlip } from 'page-flip';
+import { playPageFlipSound } from '../../utils/audioEngine.js';
 
 const props = defineProps({
   pages: {
@@ -87,18 +95,28 @@ function initPageFlip() {
     pageFlipInstance = null;
   }
 
-  // Calculate responsive dimensions
+  // Calculate responsive dimensions based on true digital manga page aspect ratio (1 : 1.501)
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const isMobile = vw < 768;
+  const mangaAspect = 1 / 1.501;
 
-  // Single page aspect ratio approx 1 : 1.45
-  let pageW = Math.min(520, Math.floor(vw * 0.45));
-  let pageH = Math.min(780, Math.floor(vh * 0.85));
+  let pageH = Math.min(960, Math.floor(vh * 0.94));
+  let pageW = Math.floor(pageH * mangaAspect);
 
   if (isMobile) {
-    pageW = Math.floor(vw * 0.9);
-    pageH = Math.min(750, Math.floor(vh * 0.8));
+    pageW = Math.min(Math.floor(vw * 0.98), 580);
+    pageH = Math.floor(pageW / mangaAspect);
+    if (pageH > vh * 0.92) {
+      pageH = Math.floor(vh * 0.92);
+      pageW = Math.floor(pageH * mangaAspect);
+    }
+  } else {
+    // On desktop in dual-spread mode (2 pages side-by-side)
+    if (pageW * 2 > vw * 0.96) {
+      pageW = Math.floor((vw * 0.96) / 2);
+      pageH = Math.floor(pageW / mangaAspect);
+    }
   }
 
   try {
@@ -115,7 +133,7 @@ function initPageFlip() {
       mobileScrollSupport: false,
       usePortrait: isMobile,
       startPage: Math.max(0, props.initialPage - 1),
-      flippingTime: 500,
+      flippingTime: 450,
       direction: 'rtl', // Authentically Japanese Manga Right-to-Left!
     });
 
@@ -127,6 +145,7 @@ function initPageFlip() {
       // In StPageFlip, e.data is current index (0-indexed)
       const currentZeroIdx = e.data;
       emit('page-change', currentZeroIdx + 1);
+      playPageFlipSound();
     });
 
     // Initial sync

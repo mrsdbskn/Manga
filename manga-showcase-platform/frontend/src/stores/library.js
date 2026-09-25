@@ -5,6 +5,7 @@
 import { defineStore } from 'pinia';
 import { CANON_SAGAS, getSagaById, getSagaForVolume } from '../utils/sagaData.js';
 import { unpackCbz, loadRemoteCbz, revokeAllocatedBlobs } from '../utils/cbzLoader.js';
+import { parseMangaMetadata } from '../utils/mangaTitle.js';
 import { useProgressStore } from './progress.js';
 
 export const useLibraryStore = defineStore('library', {
@@ -28,6 +29,7 @@ export const useLibraryStore = defineStore('library', {
     activeVolume: null,
     activePages: [],
     activeComicInfo: null,
+    activeToc: [],
     // Reader unpacking progress
     isUnpacking: false,
     unpackProgress: 0,
@@ -116,8 +118,8 @@ export const useLibraryStore = defineStore('library', {
       this.catalogError = null;
 
       try {
-        // Resolve path relative to Vite base
-        const response = await fetch('./comics/index.json');
+        // Resolve path relative to Vite base with cache busting to guarantee fresh catalog
+        const response = await fetch(`./comics/index.json?_t=${Date.now()}`, { cache: 'no-cache' });
         if (!response.ok) {
           throw new Error(`Failed to load index.json (HTTP ${response.status})`);
         }
@@ -159,6 +161,7 @@ export const useLibraryStore = defineStore('library', {
           chapterEnd: v * 8,
           pageCount: 200,
           coverUrl: `comics/covers/cover-v${v < 10 ? '0' + v : v}.webp`,
+          backCoverUrl: `comics/covers/back-cover-v${v < 10 ? '0' + v : v}.webp`,
           spineColor: '#38bdf8',
           available: v <= 2,
           cbzFile: `One Piece - v${v < 10 ? '0' + v : v} (c${String((v - 1) * 8 + 1).padStart(3, '0')}-${String(v * 8).padStart(3, '0')}).cbz`
@@ -181,7 +184,11 @@ export const useLibraryStore = defineStore('library', {
 
       try {
         let cbzUrl = null;
-        if (volume.cbzFile) {
+        if (volume.cbzUrl) {
+          cbzUrl = volume.cbzUrl;
+        } else if (volume.cbzFile && (volume.cbzFile.startsWith('http://') || volume.cbzFile.startsWith('https://'))) {
+          cbzUrl = volume.cbzFile;
+        } else if (volume.cbzFile) {
           cbzUrl = `./comics/${encodeURIComponent(volume.cbzFile)}`;
         } else {
           cbzUrl = `./comics/One Piece - v${String(volume.volumeNumber).padStart(2, '0')} (c${String(volume.chapterStart).padStart(3, '0')}-${String(volume.chapterEnd).padStart(3, '0')}).cbz`;
@@ -194,13 +201,18 @@ export const useLibraryStore = defineStore('library', {
 
         this.activePages = result.pages;
         this.activeComicInfo = result.comicInfo;
+        this.activeToc = (result.toc && result.toc.length > 0) ? result.toc : (volume.chapters || []);
         this.isReading = true;
 
         // Resume reading progress
         const progressStore = useProgressStore();
         const progress = progressStore.getProgressForVolume(volume.id);
         if (!progress.lastPage) {
-          progressStore.saveProgress(volume.id, 1, result.totalPages, volume.chapterStart);
+          progressStore.saveProgress(volume.id, 1, result.totalPages, volume.chapterStart, {
+            title: volume.title,
+            type: 'volume',
+            coverUrl: volume.coverUrl,
+          });
         }
       } catch (err) {
         console.error('Failed to open volume archive:', err);
@@ -227,26 +239,30 @@ export const useLibraryStore = defineStore('library', {
           this.unpackStatusText = status;
         });
 
-        // Determine volume metadata from ComicInfo or filename
-        let volNum = 1;
-        let title = file.name.replace(/\.[^/.]+$/, "");
-        
-        if (result.comicInfo) {
-          if (result.comicInfo.volume) volNum = parseInt(result.comicInfo.volume) || 1;
-          if (result.comicInfo.title) title = result.comicInfo.title;
-        }
+        // Clean, structured metadata detection using parseMangaMetadata
+        const meta = parseMangaMetadata(file.name, result.comicInfo, result.totalPages);
+        const itemType = meta.type;
+        const title = meta.title;
+        const volNum = meta.type === 'volume' ? (meta.number || 1) : 1;
+        const chStart = meta.type === 'chapter' ? (meta.number || 1) : 1;
+        const chEnd = chStart;
+
+        // Deterministic stable ID so reopening this exact file resumes progress
+        const cleanKey = file.name.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+        const stableId = `local-${itemType}-${cleanKey}`;
 
         const saga = getSagaForVolume(volNum);
 
         const localVol = {
-          id: `local-${Date.now()}`,
+          id: stableId,
           volumeNumber: volNum,
+          type: itemType,
           title: title,
           sagaId: saga.id,
           sagaName: saga.name,
           arcName: result.comicInfo?.arc || saga.name,
-          chapterStart: parseInt(result.comicInfo?.startChapter) || 1,
-          chapterEnd: parseInt(result.comicInfo?.endChapter) || 1,
+          chapterStart: chStart,
+          chapterEnd: chEnd,
           pageCount: result.totalPages,
           coverUrl: result.pages[0]?.url || '',
           spineColor: saga.themeColor,
@@ -257,11 +273,19 @@ export const useLibraryStore = defineStore('library', {
         this.activeVolume = localVol;
         this.activePages = result.pages;
         this.activeComicInfo = result.comicInfo;
+        this.activeToc = result.toc || [];
         this.isReading = true;
         this.localDropzoneOpen = false;
 
         const progressStore = useProgressStore();
-        progressStore.saveProgress(localVol.id, 1, result.totalPages, localVol.chapterStart);
+        const existingProgress = progressStore.getProgressForVolume(localVol.id);
+        const resumePage = existingProgress?.lastPage || 1;
+        progressStore.saveProgress(localVol.id, resumePage, result.totalPages, localVol.chapterStart, {
+          title: localVol.title,
+          type: localVol.type,
+          coverUrl: localVol.coverUrl,
+          fileName: file.name,
+        });
       } catch (err) {
         console.error('Local CBZ read error:', err);
         this.unpackError = `Error reading file: ${err.message}`;

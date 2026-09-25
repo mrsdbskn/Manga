@@ -5,6 +5,7 @@ Adheres strictly to the ComicInfo schema specification for digital manga.
 
 from __future__ import annotations
 
+import re
 import xml.etree.ElementTree as ET
 import zipfile
 from typing import Any, Dict, Optional
@@ -138,6 +139,190 @@ def write_comic_info_to_cbz(cbz_path: str, comic_info_xml: str) -> bool:
     except Exception as err:
         print(f"Error writing ComicInfo.xml to {cbz_path}: {err}")
         return False
+
+
+def clean_chapter_sub_title(raw_title: str, ch_num: Optional[int | float | str] = None) -> str:
+    """
+    Cleans a chapter subtitle by aggressively stripping redundant prefixes like
+    'Chapter X', 'Ch. X', 'c001', chapter numbers, duplicate hyphens, colons,
+    and Windows-illegal characters.
+    Prevents duplicate naming like 'Chapter 1 - Chapter 1 - Romance Dawn.cbz'.
+    """
+    if not raw_title:
+        return ""
+    t = str(raw_title).strip()
+
+    # If ch_num is provided, specifically strip variations of that chapter number
+    if ch_num is not None:
+        try:
+            ch_float = float(ch_num)
+            int_str = str(int(ch_float)) if ch_float.is_integer() else str(ch_float)
+        except Exception:
+            int_str = str(ch_num)
+        ch_raw = str(ch_num).strip()
+        num_patterns = [re.escape(ch_raw), re.escape(int_str), rf"0+{re.escape(int_str)}"]
+        combined_num = "(?:" + "|".join(num_patterns) + ")"
+
+        # Match "Chapter 1 - ", "Ch 01: ", "c1 ", "1 - ", etc.
+        pat = rf"^(?:chapter\b|ch\b|ch\.|c)?\s*{combined_num}\s*[:\-–—]?\s*"
+        while re.search(pat, t, re.IGNORECASE):
+            new_t = re.sub(pat, "", t, count=1, flags=re.IGNORECASE).strip()
+            if new_t == t:
+                break
+            t = new_t
+
+    # Generic strip of any remaining leading "Chapter X", "Ch. X" with or without punctuation
+    generic_pat = r"^(?:chapter\b|ch\b|ch\.|c)\s*\d+(?:\.\d+)?\s*[:\-–—]?\s*"
+    while re.search(generic_pat, t, re.IGNORECASE):
+        new_t = re.sub(generic_pat, "", t, count=1, flags=re.IGNORECASE).strip()
+        if new_t == t:
+            break
+        t = new_t
+
+    # Strip any leading 'Chapter' or 'Ch' word without number (require word boundary)
+    t = re.sub(r"^(?:chapter\b|ch\b|ch\.)\s*[:\-–—]?\s*", "", t, flags=re.IGNORECASE).strip()
+
+    # Strip leftover leading hyphens, colons, or punctuation
+    t = re.sub(r"^[:\-–—\s]+", "", t).strip()
+
+    # Clean Windows-illegal characters: \ / : * ? " < > |
+    t = t.replace(":", " - ").replace("/", "-").replace("\\", "-")
+    t = re.sub(r'[*?"<>|]', "", t)
+
+    # Normalize whitespace and collapse multiple dashes
+    t = re.sub(r"\s*-\s*-\s*", " - ", t)
+    t = re.sub(r"\s*-\s*:\s*", " - ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    t = re.sub(r"^[:\-–—\s]+", "", t).strip()
+
+    # If nothing meaningful remains
+    if t.lower() in {"", "chapter", "ch", "none", "null", "undefined"}:
+        return ""
+
+    return t
+
+
+def format_chapter_filename(ch_num: int | float | str, raw_title: str = "") -> str:
+    """
+    Returns a standardized chapter CBZ filename:
+    'Chapter {ch_num} - {cleaned_title}.cbz' or 'Chapter {ch_num}.cbz'.
+    GUARANTEES that duplicate prefixes like 'Chapter 1 - Chapter 1 - ...' never happen.
+    """
+    try:
+        ch_float = float(ch_num)
+        clean_num = int(ch_float) if ch_float.is_integer() else ch_float
+    except Exception:
+        clean_num = str(ch_num).strip()
+
+    sub = clean_chapter_sub_title(raw_title, ch_num)
+    if sub:
+        return f"Chapter {clean_num} - {sub}.cbz"
+    return f"Chapter {clean_num}.cbz"
+
+
+def format_chapter_display_title(ch_num: int | float | str, raw_title: str = "") -> str:
+    """
+    Returns a standardized display title for ComicInfo.xml and UI:
+    'Chapter {ch_num}: {cleaned_title}' or 'Chapter {ch_num}'.
+    """
+    try:
+        ch_float = float(ch_num)
+        clean_num = int(ch_float) if ch_float.is_integer() else ch_float
+    except Exception:
+        clean_num = str(ch_num).strip()
+
+    sub = clean_chapter_sub_title(raw_title, ch_num)
+    if sub:
+        return f"Chapter {clean_num}: {sub}"
+    return f"Chapter {clean_num}"
+
+
+def clean_volume_sub_title(raw_title: str, vol_num: Optional[int | str] = None) -> str:
+    """
+    Cleans a volume subtitle by aggressively stripping redundant prefixes like
+    'Volume X', 'Vol. X', 'v01', volume numbers, duplicate hyphens, colons,
+    and Windows-illegal characters.
+    Prevents duplicate naming like 'Volume 1 - Volume 1 - Romance Dawn.cbz'.
+    """
+    if not raw_title:
+        return ""
+    t = str(raw_title).strip()
+
+    if vol_num is not None:
+        try:
+            v_int = int(vol_num)
+            int_str = str(v_int)
+        except Exception:
+            int_str = str(vol_num)
+        v_raw = str(vol_num).strip()
+        num_patterns = [re.escape(v_raw), re.escape(int_str), rf"0+{re.escape(int_str)}"]
+        combined_num = "(?:" + "|".join(num_patterns) + ")"
+
+        pat = rf"^(?:volume\b|vol\b|vol\.|v)?\s*{combined_num}\s*[:\-–—]?\s*"
+        while re.search(pat, t, re.IGNORECASE):
+            new_t = re.sub(pat, "", t, count=1, flags=re.IGNORECASE).strip()
+            if new_t == t:
+                break
+            t = new_t
+
+    generic_pat = r"^(?:volume\b|vol\b|vol\.|v)\s*\d+\s*[:\-–—]?\s*"
+    while re.search(generic_pat, t, re.IGNORECASE):
+        new_t = re.sub(generic_pat, "", t, count=1, flags=re.IGNORECASE).strip()
+        if new_t == t:
+            break
+        t = new_t
+
+    # Strip any leading 'Volume' or 'Vol' word (require word boundary)
+    t = re.sub(r"^(?:volume\b|vol\b|vol\.)\s*[:\-–—]?\s*", "", t, flags=re.IGNORECASE).strip()
+    t = re.sub(r"^[:\-–—\s]+", "", t).strip()
+
+    # Clean Windows-illegal characters
+    t = t.replace(":", " - ").replace("/", "-").replace("\\", "-")
+    t = re.sub(r'[*?"<>|]', "", t)
+
+    # Normalize whitespace and collapse multiple dashes
+    t = re.sub(r"\s*-\s*-\s*", " - ", t)
+    t = re.sub(r"\s*-\s*:\s*", " - ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    t = re.sub(r"^[:\-–—\s]+", "", t).strip()
+
+    if t.lower() in {"", "volume", "vol", "none", "null", "undefined"}:
+        return ""
+
+    return t
+
+
+def format_volume_filename(vol_num: int | str, raw_title: str = "") -> str:
+    """
+    Returns a standardized volume CBZ filename:
+    'Volume {vol_num} - {cleaned_title}.cbz' or 'Volume {vol_num}.cbz'.
+    GUARANTEES that duplicate prefixes like 'Volume 1 - Volume 1 - ...' never happen.
+    """
+    try:
+        clean_vol = int(vol_num)
+    except Exception:
+        clean_vol = str(vol_num).strip()
+
+    sub = clean_volume_sub_title(raw_title, vol_num)
+    if sub:
+        return f"Volume {clean_vol} - {sub}.cbz"
+    return f"Volume {clean_vol}.cbz"
+
+
+def format_volume_display_title(vol_num: int | str, raw_title: str = "") -> str:
+    """
+    Returns a standardized display title for ComicInfo.xml and UI:
+    'Volume {vol_num}: {cleaned_title}' or 'Volume {vol_num}'.
+    """
+    try:
+        clean_vol = int(vol_num)
+    except Exception:
+        clean_vol = str(vol_num).strip()
+
+    sub = clean_volume_sub_title(raw_title, vol_num)
+    if sub:
+        return f"Volume {clean_vol}: {sub}"
+    return f"Volume {clean_vol}"
 
 
 if __name__ == "__main__":

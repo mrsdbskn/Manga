@@ -82,7 +82,7 @@
       </div>
 
       <h3 class="text-base sm:text-lg font-bold text-white font-outfit tracking-tight group-hover:text-[#a8c7fa] transition-colors">
-        {{ volume.title }}
+        {{ formattedVolumeTitle }}
       </h3>
 
       <p class="text-xs text-slate-400 line-clamp-2 mt-1 leading-relaxed max-w-2xl">
@@ -151,7 +151,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { ref, computed } from 'vue';
 import { useLibraryStore } from '../../stores/library.js';
 import { useProgressStore } from '../../stores/progress.js';
 import ProgressBarMD3 from '../UI/ProgressBarMD3.vue';
@@ -168,6 +168,16 @@ const progressStore = useProgressStore();
 
 const userProgress = computed(() => {
   return progressStore.getProgressForVolume(props.volume.id);
+});
+
+const formattedVolumeTitle = computed(() => {
+  const vNum = props.volume.volumeNumber;
+  let rawTitle = (props.volume.title || '').trim();
+  rawTitle = rawTitle.replace(/^(?:volume|vol\.?)\s*\d+\s*[:\-–—]\s*/i, '').trim();
+  if (!rawTitle || /^(?:volume|vol\.?)\s*\d+$/i.test(rawTitle)) {
+    return `Vol. ${vNum}`;
+  }
+  return `Vol. ${vNum} - ${rawTitle}`;
 });
 
 function openReader() {

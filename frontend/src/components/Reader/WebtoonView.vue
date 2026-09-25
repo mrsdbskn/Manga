@@ -1,29 +1,33 @@
 <template>
   <div 
     ref="containerRef"
-    class="w-full h-full overflow-y-auto overflow-x-hidden bg-[#0a0c12] relative scroll-smooth"
+    class="w-full h-full overflow-y-auto overflow-x-hidden bg-black relative scroll-smooth"
     @scroll="onScrollThrottled"
     @click="onContainerClick"
   >
     <!-- Centered Webtoon Strip Container -->
-    <div class="max-w-3xl mx-auto py-8 px-2 sm:px-4 flex flex-col items-center">
+    <div class="max-w-4xl mx-auto py-8 px-2 sm:px-4 flex flex-col items-center">
       <div 
-        v-for="page in pages" 
+        v-for="page in displayPages" 
         :key="page.pageNumber"
         :id="`webtoon-page-${page.pageNumber}`"
         :data-page="page.pageNumber"
         class="webtoon-page-wrapper w-full mb-1 sm:mb-2 relative flex justify-center group"
       >
         <img 
-          :src="page.url" 
+          :src="page.originalUrl || page.url" 
           :alt="`Page ${page.pageNumber}`"
-          class="w-full max-w-2xl h-auto object-contain rounded-sm shadow-elevation-2 select-none"
+          :class="[
+            'h-auto object-contain rounded-sm shadow-elevation-2 select-none transition-all',
+            page.isSpread ? 'w-full max-w-4xl' : 'w-full max-w-2xl'
+          ]"
           loading="lazy"
         />
 
         <!-- Hover Page Tag on Side -->
-        <div class="absolute top-2 right-2 sm:-right-12 opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 backdrop-blur-sm text-[10px] font-mono text-slate-300 px-2 py-0.5 rounded-full border border-white/10 pointer-events-none">
-          P. {{ page.pageNumber }}
+        <div class="absolute top-2 right-2 sm:-right-12 opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 backdrop-blur-sm text-[10px] font-mono text-slate-300 px-2 py-0.5 rounded-full border border-white/10 pointer-events-none flex items-center gap-1">
+          <span v-if="page.isSpread" class="text-amber-400 font-bold">SPREAD</span>
+          <span>P. {{ page.pageNumber }}</span>
         </div>
       </div>
 
@@ -57,7 +61,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 
 const props = defineProps({
   pages: {
@@ -71,6 +75,11 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['page-change', 'toggle-hud']);
+
+const displayPages = computed(() => {
+  // If smart double spread splitting occurred, skip the left split in Webtoon vertical scroll so the wide panoramic image is displayed once in full width
+  return props.pages.filter(p => !p.isSpread || p.spreadPart !== 'left');
+});
 
 const containerRef = ref(null);
 const activePage = ref(props.initialPage || 1);

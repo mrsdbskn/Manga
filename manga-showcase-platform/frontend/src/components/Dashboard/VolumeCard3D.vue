@@ -80,43 +80,59 @@
 
         <!-- BACK COVER (180deg) -->
         <div 
-          class="absolute inset-0 rounded-l-md overflow-hidden bg-[#13151f] shadow-elevation-3 border-l border-t border-b border-white/10 backface-hidden p-3.5 flex flex-col justify-between"
+          class="absolute inset-0 rounded-l-md overflow-hidden bg-[#13151f] shadow-elevation-3 border-l border-t border-b border-white/10 backface-hidden"
           style="transform: rotateY(180deg) translateZ(18px);"
         >
-          <!-- Back Header -->
-          <div class="flex items-center justify-between border-b border-white/10 pb-1.5">
-            <span class="text-[10px] font-bold tracking-widest text-slate-400">SHUEISHA MANGA</span>
-            <span class="text-[9px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 font-mono">CANON {{ volume.volumeNumber }}</span>
-          </div>
+          <!-- Real Back Cover Image if available -->
+          <img 
+            v-if="volume.backCoverUrl && !backImageError"
+            :src="volume.backCoverUrl" 
+            :alt="`${volume.title} Back Cover`"
+            class="w-full h-full object-cover object-center pointer-events-none select-none"
+            @error="onBackImageError"
+            loading="lazy"
+          />
 
-          <!-- Back Synopsis / Details -->
-          <div class="my-auto py-1">
-            <p class="text-[11px] text-slate-300 leading-relaxed line-clamp-5 italic">
-              "{{ volume.summary || 'Monkey D. Luffy embarks on his grand voyage across the Grand Line to discover the One Piece.' }}"
-            </p>
+          <!-- Graphic Fallback if back cover is missing/error -->
+          <div 
+            v-else
+            class="w-full h-full p-3.5 flex flex-col justify-between"
+          >
+            <!-- Back Header -->
+            <div class="flex items-center justify-between border-b border-white/10 pb-1.5">
+              <span class="text-[10px] font-bold tracking-widest text-slate-400">SHUEISHA MANGA</span>
+              <span class="text-[9px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 font-mono">CANON {{ volume.volumeNumber }}</span>
+            </div>
 
-            <div class="mt-2.5 pt-2 border-t border-white/10 text-[10px] text-slate-400 space-y-1">
-              <div class="flex justify-between">
-                <span>Story & Art:</span>
-                <span class="text-white font-medium">Eiichiro Oda</span>
-              </div>
-              <div class="flex justify-between">
-                <span>Chapters:</span>
-                <span class="text-white font-mono">{{ volume.chapterStart }} – {{ volume.chapterEnd }}</span>
-              </div>
-              <div class="flex justify-between">
-                <span>Pages:</span>
-                <span class="text-white font-mono">{{ volume.pageCount || 200 }}</span>
+            <!-- Back Synopsis / Details -->
+            <div class="my-auto py-1">
+              <p class="text-[11px] text-slate-300 leading-relaxed line-clamp-5 italic">
+                "{{ volume.summary || 'Monkey D. Luffy embarks on his grand voyage across the Grand Line to discover the One Piece.' }}"
+              </p>
+
+              <div class="mt-2.5 pt-2 border-t border-white/10 text-[10px] text-slate-400 space-y-1">
+                <div class="flex justify-between">
+                  <span>Story & Art:</span>
+                  <span class="text-white font-medium">Eiichiro Oda</span>
+                </div>
+                <div class="flex justify-between">
+                  <span>Chapters:</span>
+                  <span class="text-white font-mono">{{ volume.chapterStart }} – {{ volume.chapterEnd }}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span>Pages:</span>
+                  <span class="text-white font-mono">{{ volume.pageCount || 200 }}</span>
+                </div>
               </div>
             </div>
-          </div>
 
-          <!-- Barcode Mock -->
-          <div class="pt-2 border-t border-white/10 flex items-center justify-between">
-            <div class="h-6 w-24 bg-gradient-to-r from-white/70 via-white/40 to-white/70 rounded-sm opacity-60 flex items-center justify-center">
-              <span class="text-[7px] font-mono text-black font-bold tracking-tighter">||| | |||| | ||||</span>
+            <!-- Barcode Mock -->
+            <div class="pt-2 border-t border-white/10 flex items-center justify-between">
+              <div class="h-6 w-24 bg-gradient-to-r from-white/70 via-white/40 to-white/70 rounded-sm opacity-60 flex items-center justify-center">
+                <span class="text-[7px] font-mono text-black font-bold tracking-tighter">||| | |||| | ||||</span>
+              </div>
+              <span class="text-[9px] font-mono text-slate-500">ISBN 978-4-08</span>
             </div>
-            <span class="text-[9px] font-mono text-slate-500">ISBN 978-4-08</span>
           </div>
 
           <!-- Reverse lighting overlay -->
@@ -201,6 +217,23 @@
         ></div>
       </div>
 
+      <!-- 360° Spin Drag Hint Badge & Flip Button -->
+      <div class="absolute top-1 right-1 z-20">
+        <button 
+          type="button" 
+          @click.stop="toggleFlip"
+          class="p-1.5 rounded-full bg-black/60 hover:bg-black/90 text-slate-300 hover:text-white border border-white/10 backdrop-blur-md shadow-sm transition-all"
+          title="Flip Book (Front / Back)"
+        >
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+            <path d="M16 21h5v-5"/>
+          </svg>
+        </button>
+      </div>
+
       <!-- 360° Spin Drag Hint Badge (Fades after first interaction) -->
       <transition name="fade">
         <div 
@@ -218,8 +251,8 @@
     <!-- Volume Metadata & Quick Actions -->
     <div class="w-full max-w-[210px] mt-2 flex flex-col items-center text-center">
       <!-- Title & Number -->
-      <h3 class="text-sm font-bold text-white truncate max-w-full leading-snug group-hover:text-[#a8c7fa] transition-colors">
-        Vol. {{ volume.volumeNumber }} — {{ volume.title }}
+      <h3 class="text-sm font-bold text-white truncate max-w-full leading-snug group-hover:text-[#a8c7fa] transition-colors" :title="formattedVolumeTitle">
+        {{ formattedVolumeTitle }}
       </h3>
       
       <!-- Chapter Badge -->
@@ -280,6 +313,18 @@ const progressStore = useProgressStore();
 
 const userProgress = computed(() => {
   return progressStore.getProgressForVolume(props.volume.id);
+});
+
+const formattedVolumeTitle = computed(() => {
+  const vNum = props.volume.volumeNumber;
+  let rawTitle = (props.volume.title || '').trim();
+  // Strip redundant leading "Vol. 112 -", "Volume 112 -", "Volume 112:", "Vol 112:"
+  rawTitle = rawTitle.replace(/^(?:volume|vol\.?)\s*\d+\s*[:\-–—]\s*/i, '').trim();
+  // If rawTitle is just "Volume 112" or "Vol. 112" or empty
+  if (!rawTitle || /^(?:volume|vol\.?)\s*\d+$/i.test(rawTitle)) {
+    return `Vol. ${vNum}`;
+  }
+  return `Vol. ${vNum} - ${rawTitle}`;
 });
 
 // 3D Physics & Drag Engine State
@@ -360,13 +405,31 @@ function resetRotation() {
   velocityX = 0;
 }
 
+function toggleFlip() {
+  hasInteracted.value = true;
+  velocityX = 0;
+  rotationX.value = 0;
+  // If close to back (180deg), flip to front (22deg); otherwise flip to 180deg
+  const normY = ((rotationY.value % 360) + 360) % 360;
+  if (Math.abs(normY - 180) < 60) {
+    rotationY.value = 22;
+  } else {
+    rotationY.value = 180;
+  }
+}
+
 function openReader() {
   libraryStore.openReader(props.volume);
 }
 
 const imageError = ref(false);
+const backImageError = ref(false);
 
 function onImageError() {
   imageError.value = true;
+}
+
+function onBackImageError() {
+  backImageError.value = true;
 }
 </script>

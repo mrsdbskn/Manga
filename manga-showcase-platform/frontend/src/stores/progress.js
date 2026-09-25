@@ -53,7 +53,7 @@ export const useProgressStore = defineStore('progress', {
     /**
      * Updates reading progress for a volume and synchronizes with localStorage.
      */
-    saveProgress(volumeId, currentPage, totalPages, chapter = null) {
+    saveProgress(volumeId, currentPage, totalPages, chapter = null, extraMeta = {}) {
       if (!volumeId) return;
 
       const total = Math.max(1, totalPages || 1);
@@ -62,6 +62,16 @@ export const useProgressStore = defineStore('progress', {
       const completed = page >= total;
 
       const existing = this.records[volumeId] || { bookmarks: [] };
+
+      // Determine item type ('chapter' vs 'volume')
+      let itemType = extraMeta.type || existing.type;
+      if (!itemType) {
+        if (volumeId.includes('chapter') || (extraMeta.title && /chapter/i.test(extraMeta.title))) {
+          itemType = 'chapter';
+        } else {
+          itemType = 'volume';
+        }
+      }
 
       this.records[volumeId] = {
         volumeId,
@@ -72,6 +82,10 @@ export const useProgressStore = defineStore('progress', {
         completed,
         updatedAt: Date.now(),
         bookmarks: existing.bookmarks || [],
+        title: extraMeta.title || existing.title || null,
+        type: itemType,
+        coverUrl: extraMeta.coverUrl || existing.coverUrl || null,
+        fileName: extraMeta.fileName || existing.fileName || null,
       };
 
       this._persist();
@@ -120,6 +134,16 @@ export const useProgressStore = defineStore('progress', {
       if (mode === 'flipbook' || mode === 'webtoon') {
         this.readMode = mode;
         localStorage.setItem(PREF_KEY, mode);
+      }
+    },
+
+    /**
+     * Removes an individual record from reading progress.
+     */
+    deleteRecord(volumeId) {
+      if (this.records[volumeId]) {
+        delete this.records[volumeId];
+        this._persist();
       }
     },
 

@@ -5,7 +5,7 @@
     :class="[isVisible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0']"
   >
     <div class="max-w-6xl mx-auto px-4 py-3 pointer-events-auto">
-      <div class="glass-nav rounded-2xl px-4 py-2.5 flex items-center justify-between shadow-elevation-3 border border-white/10">
+      <div class="glass-nav rounded-2xl px-4 py-2.5 flex items-center justify-between shadow-elevation-3 border border-white/10 relative">
         
         <!-- Left: Back Button & Volume Title -->
         <div class="flex items-center gap-3 min-w-0">
@@ -21,17 +21,17 @@
           </button>
 
           <div class="min-w-0">
-            <h2 class="text-xs sm:text-sm font-bold text-white truncate max-w-[200px] sm:max-w-xs">
+            <h2 class="text-xs sm:text-sm font-bold text-white truncate max-w-[160px] sm:max-w-xs">
               {{ title || 'One Piece' }}
             </h2>
             <p class="text-[10px] sm:text-[11px] text-sky-300 truncate">
-              {{ subtitle || 'Manga Reader' }}
+              {{ currentChapterTitle || subtitle || 'Manga Reader' }}
             </p>
           </div>
         </div>
 
         <!-- Center: Jump Controls & Page Pill -->
-        <div class="flex items-center gap-2 sm:gap-4">
+        <div class="flex items-center gap-2 sm:gap-3">
           <!-- Page Pill -->
           <div class="px-3 py-1 rounded-full bg-black/40 border border-white/10 text-xs font-mono text-slate-200 flex items-center gap-1.5 shadow-sm">
             <span>Page</span>
@@ -47,8 +47,8 @@
             <span>{{ totalPages }}</span>
           </div>
 
-          <!-- Page Slider (Hidden on tiny screens) -->
-          <div class="hidden md:flex items-center gap-2 w-32 lg:w-48">
+          <!-- Page Slider (Hidden on small screens) -->
+          <div class="hidden lg:flex items-center gap-2 w-28 xl:w-36">
             <input 
               type="range"
               :min="1"
@@ -58,10 +58,147 @@
               class="w-full accent-sky-400 h-1.5 bg-white/20 rounded-lg cursor-pointer"
             />
           </div>
+
+          <!-- Chapter Table of Contents (TOC) Dropdown Trigger -->
+          <div class="relative" v-if="hasChapters">
+            <button
+              type="button"
+              @click="toggleTocMenu"
+              class="px-2.5 py-1 rounded-full bg-sky-500/20 text-sky-300 hover:bg-sky-500/30 border border-sky-500/30 text-xs font-medium flex items-center gap-1 transition-all md-state-layer"
+              title="Table of Contents: Jump to Chapter"
+            >
+              <span>📑</span>
+              <span class="hidden sm:inline">Chapters</span>
+              <svg class="w-3 h-3 transition-transform" :class="tocOpen ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="m6 9 6 6 6-6"/>
+              </svg>
+            </button>
+
+            <!-- Floating Chapter TOC Menu -->
+            <div 
+              v-if="tocOpen" 
+              class="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-72 max-h-80 overflow-y-auto bg-slate-900/95 backdrop-blur-xl border border-sky-500/20 rounded-2xl shadow-2xl p-2 z-50 space-y-1 custom-scrollbar animate-in fade-in zoom-in-95 duration-150"
+            >
+              <div class="px-3 py-1.5 text-[11px] font-bold text-sky-400 uppercase tracking-wider border-b border-white/10 flex justify-between items-center">
+                <span>Volume Chapters</span>
+                <span class="text-[10px] text-slate-400">{{ libraryStore.activeToc.length }} chapters</span>
+              </div>
+              <button
+                v-for="ch in libraryStore.activeToc"
+                :key="ch.chapterNumber"
+                type="button"
+                @click="jumpToChapter(ch)"
+                :class="[
+                  'w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors',
+                  isChapterActive(ch)
+                    ? 'bg-sky-500/30 text-sky-200 font-bold border border-sky-500/30'
+                    : 'text-slate-300 hover:bg-white/10 hover:text-white'
+                ]"
+              >
+                <div class="truncate pr-2">
+                  <div class="font-medium text-white">{{ ch.title || `Chapter ${ch.chapterNumber}` }}</div>
+                  <div class="text-[10px] text-slate-400">Chapter {{ ch.chapterNumber }}</div>
+                </div>
+                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/40 text-sky-300 shrink-0">
+                  p.{{ ch.startPage }}
+                </span>
+              </button>
+            </div>
+          </div>
         </div>
 
-        <!-- Right: Mode Switcher, Fullscreen, Bookmark, Shortcuts -->
-        <div class="flex items-center gap-1 sm:gap-2 shrink-0">
+        <!-- Right: Mode Switcher, Audio, Fullscreen, Bookmark -->
+        <div class="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          
+          <!-- Audio Ambience & SFX Menu Trigger -->
+          <div class="relative">
+            <button
+              type="button"
+              @click="toggleAudioMenu"
+              :class="[
+                'p-2 rounded-full transition-colors md-state-layer',
+                audioSettings.ambientMode !== 'off' || audioSettings.sfxEnabled
+                  ? 'text-sky-400 bg-sky-400/20'
+                  : 'text-slate-400 hover:text-white hover:bg-white/10'
+              ]"
+              title="Reading Audio & Ambient Soundscapes"
+            >
+              <svg v-if="audioSettings.ambientMode !== 'off' || audioSettings.sfxEnabled" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+              </svg>
+              <svg v-else class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                <line x1="23" y1="9" x2="17" y2="15"/>
+                <line x1="17" y1="9" x2="23" y2="15"/>
+              </svg>
+            </button>
+
+            <!-- Audio Settings Popup -->
+            <div 
+              v-if="audioMenuOpen" 
+              class="absolute right-0 top-full mt-2 w-64 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-3 z-50 space-y-3 animate-in fade-in zoom-in-95 duration-150"
+            >
+              <div class="text-xs font-bold text-white flex items-center justify-between border-b border-white/10 pb-2">
+                <span>🎧 Sound Atmosphere</span>
+                <button @click="audioMenuOpen = false" class="text-slate-400 hover:text-white text-xs">✕</button>
+              </div>
+
+              <!-- Page Turn SFX -->
+              <div class="flex items-center justify-between text-xs text-slate-300">
+                <span>Page-Turn Flutter</span>
+                <button 
+                  type="button" 
+                  @click="onToggleSfx"
+                  :class="audioSettings.sfxEnabled ? 'bg-sky-500 text-white' : 'bg-white/10 text-slate-400'"
+                  class="px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors"
+                >
+                  {{ audioSettings.sfxEnabled ? 'On' : 'Mute' }}
+                </button>
+              </div>
+
+              <!-- Ambient Soundscape Selector -->
+              <div class="space-y-1.5">
+                <div class="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">Grand Line Ambience</div>
+                <div class="grid grid-cols-2 gap-1.5 text-xs">
+                  <button 
+                    v-for="mode in ambientModes" 
+                    :key="mode.id"
+                    type="button"
+                    @click="onSelectAmbient(mode.id)"
+                    :class="[
+                      'px-2 py-1.5 rounded-xl border text-left flex items-center gap-1.5 transition-all',
+                      audioSettings.ambientMode === mode.id
+                        ? 'bg-sky-500/20 border-sky-400 text-sky-300 font-bold'
+                        : 'bg-black/20 border-white/10 text-slate-300 hover:bg-white/10'
+                    ]"
+                  >
+                    <span>{{ mode.icon }}</span>
+                    <span class="truncate">{{ mode.label }}</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Ambient Volume Slider -->
+              <div v-if="audioSettings.ambientMode !== 'off'" class="space-y-1 pt-1 border-t border-white/10">
+                <div class="flex justify-between text-[11px] text-slate-400">
+                  <span>Volume</span>
+                  <span>{{ Math.round(audioSettings.ambientVolume * 100) }}%</span>
+                </div>
+                <input 
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  :value="audioSettings.ambientVolume"
+                  @input="onAmbientVolumeChange"
+                  class="w-full accent-sky-400 h-1 bg-white/20 rounded cursor-pointer"
+                />
+              </div>
+            </div>
+          </div>
+
           <!-- Dual Engine Mode Toggle -->
           <button 
             type="button"
@@ -127,7 +264,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useLibraryStore } from '../../stores/library.js';
+import {
+  playPageFlipSound,
+  setAmbientMode,
+  setAmbientVolume,
+  toggleSfx,
+  getAudioSettings,
+} from '../../utils/audioEngine.js';
 
 const props = defineProps({
   title: String,
@@ -161,7 +306,69 @@ const emit = defineEmits([
   'toggle-bookmark',
 ]);
 
+const libraryStore = useLibraryStore();
 const isFullscreen = ref(false);
+const tocOpen = ref(false);
+const audioMenuOpen = ref(false);
+
+const audioSettings = ref(getAudioSettings());
+
+const ambientModes = [
+  { id: 'ocean', label: 'Sea Waves', icon: '🌊' },
+  { id: 'rain', label: 'Deck Rain', icon: '🌧️' },
+  { id: 'wind', label: 'Ocean Wind', icon: '💨' },
+  { id: 'off', label: 'Silence', icon: '🔇' },
+];
+
+const hasChapters = computed(() => {
+  return libraryStore.activeToc && libraryStore.activeToc.length > 0;
+});
+
+const currentChapterTitle = computed(() => {
+  if (!libraryStore.activeToc || libraryStore.activeToc.length === 0) return null;
+  const current = libraryStore.activeToc.find(
+    ch => props.currentPage >= ch.startPage && props.currentPage <= ch.endPage
+  );
+  return current ? current.title : null;
+});
+
+function isChapterActive(ch) {
+  return props.currentPage >= ch.startPage && props.currentPage <= ch.endPage;
+}
+
+function toggleTocMenu() {
+  tocOpen.value = !tocOpen.value;
+  if (tocOpen.value) audioMenuOpen.value = false;
+}
+
+function toggleAudioMenu() {
+  audioMenuOpen.value = !audioMenuOpen.value;
+  if (audioMenuOpen.value) tocOpen.value = false;
+}
+
+function jumpToChapter(ch) {
+  emit('jump-page', ch.startPage);
+  tocOpen.value = false;
+  playPageFlipSound();
+}
+
+function onToggleSfx() {
+  const next = !audioSettings.value.sfxEnabled;
+  toggleSfx(next);
+  audioSettings.value.sfxEnabled = next;
+  if (next) playPageFlipSound();
+}
+
+function onSelectAmbient(mode) {
+  setAmbientMode(mode);
+  audioSettings.value.ambientMode = mode;
+}
+
+function onAmbientVolumeChange(e) {
+  const vol = parseFloat(e.target.value);
+  setAmbientVolume(vol);
+  audioSettings.value.ambientVolume = vol;
+}
 
 function toggleMode() {
   const nextMode = props.currentMode === 'flipbook' ? 'webtoon' : 'flipbook';
@@ -193,11 +400,30 @@ function onFullscreenChange() {
   isFullscreen.value = !!document.fullscreenElement;
 }
 
+function onDocumentClick(e) {
+  if (!e.target.closest('.glass-nav')) {
+    tocOpen.value = false;
+    audioMenuOpen.value = false;
+  }
+}
+
 onMounted(() => {
   document.addEventListener('fullscreenchange', onFullscreenChange);
+  document.addEventListener('click', onDocumentClick);
+  // Reconnect audio ambience if saved as active
+  if (audioSettings.value.ambientMode !== 'off') {
+    // Requires user interaction policy: will start upon first click
+    const startAudioOnce = () => {
+      setAmbientMode(audioSettings.value.ambientMode);
+      window.removeEventListener('click', startAudioOnce);
+    };
+    window.addEventListener('click', startAudioOnce, { once: true });
+  }
 });
 
 onUnmounted(() => {
   document.removeEventListener('fullscreenchange', onFullscreenChange);
+  document.removeEventListener('click', onDocumentClick);
+  setAmbientMode('off');
 });
 </script>

@@ -30,16 +30,111 @@ except ImportError:
     PIL_AVAILABLE = False
 
 try:
-    from tools.comic_info import build_comic_info_xml, write_comic_info_to_cbz
+    from tools.comic_info import (
+        build_comic_info_xml,
+        write_comic_info_to_cbz,
+        format_volume_filename,
+        format_volume_display_title,
+        format_chapter_filename,
+        format_chapter_display_title,
+        clean_volume_sub_title,
+        clean_chapter_sub_title,
+    )
     from tools.catalog_indexer import get_volume_meta, scan_and_index_volumes, CANON_VOLUMES_DATA
-    from tools.mangadex_downloader import download_mangadex_chapter
+    from tools.mangadex_downloader import download_mangadex_chapter, download_mangadex_batch, parse_chapter_range
 except ImportError:
-    from comic_info import build_comic_info_xml, write_comic_info_to_cbz
+    from comic_info import (
+        build_comic_info_xml,
+        write_comic_info_to_cbz,
+        format_volume_filename,
+        format_volume_display_title,
+        format_chapter_filename,
+        format_chapter_display_title,
+        clean_volume_sub_title,
+        clean_chapter_sub_title,
+    )
     from catalog_indexer import get_volume_meta, scan_and_index_volumes, CANON_VOLUMES_DATA
     try:
-        from mangadex_downloader import download_mangadex_chapter
+        from mangadex_downloader import download_mangadex_chapter, download_mangadex_batch, parse_chapter_range
     except ImportError:
         download_mangadex_chapter = None
+        download_mangadex_batch = None
+        parse_chapter_range = None
+
+try:
+    from tools.weebcentral_downloader import download_weebcentral_chapter, download_weebcentral_batch, fetch_weebcentral_chapter_map
+except ImportError:
+    try:
+        from weebcentral_downloader import download_weebcentral_chapter, download_weebcentral_batch, fetch_weebcentral_chapter_map
+    except ImportError:
+        download_weebcentral_chapter = None
+        download_weebcentral_batch = None
+        fetch_weebcentral_chapter_map = None
+
+try:
+    from tools.volume_bundler import (
+        scan_folder_for_bundleable_volumes,
+        bundle_volume_from_chapters,
+        bundle_all_ready_volumes,
+        is_covers_path,
+        find_covers_dir,
+        find_volume_cover_file,
+        find_volume_back_cover_file,
+        load_viz_volumes_metadata,
+        generate_volume_back_cover_bytes,
+    )
+except ImportError:
+    try:
+        from volume_bundler import (
+            scan_folder_for_bundleable_volumes,
+            bundle_volume_from_chapters,
+            bundle_all_ready_volumes,
+            is_covers_path,
+            find_covers_dir,
+            find_volume_cover_file,
+            find_volume_back_cover_file,
+            load_viz_volumes_metadata,
+            generate_volume_back_cover_bytes,
+        )
+    except ImportError:
+        scan_folder_for_bundleable_volumes = None
+        bundle_volume_from_chapters = None
+        bundle_all_ready_volumes = None
+        find_covers_dir = None
+        find_volume_cover_file = None
+        find_volume_back_cover_file = None
+        load_viz_volumes_metadata = None
+        generate_volume_back_cover_bytes = None
+        def is_covers_path(p):
+            return any(part.lower() == "covers" for part in Path(p).parts)
+
+try:
+    from tools.r2_sync import (
+        load_r2_config,
+        save_r2_config,
+        test_r2_connection,
+        configure_r2_cors,
+        sync_comics_folder_to_r2,
+        upload_file_to_r2,
+    )
+except ImportError:
+    try:
+        from r2_sync import (
+            load_r2_config,
+            save_r2_config,
+            test_r2_connection,
+            configure_r2_cors,
+            sync_comics_folder_to_r2,
+            upload_file_to_r2,
+        )
+    except ImportError:
+        load_r2_config = None
+        save_r2_config = None
+        test_r2_connection = None
+        configure_r2_cors = None
+        sync_comics_folder_to_r2 = None
+        upload_file_to_r2 = None
+
 
 
 def natural_sort_key(s: str):
@@ -63,10 +158,12 @@ def create_dummy_sample_volume(
     meta = get_volume_meta(vol_num)
     ch_start = meta["chapterStart"]
     ch_end = meta["chapterEnd"]
-    archive_name = f"One Piece - v{vol_num:02d} (c{ch_start:03d}-{ch_end:03d}).cbz"
+    raw_title = meta.get("title", "").strip()
+    archive_name = format_volume_filename(vol_num, raw_title)
     archive_path = out_dir / archive_name
 
     log_callback(f"Generating aesthetic sample volume: {archive_name}...")
+
 
     # Generate sample manga pages in memory
     pages_data = []
@@ -173,41 +270,110 @@ def pack_folder_to_volume_cbz(
     start_ch = ch_start if ch_start is not None else meta["chapterStart"]
     end_ch = ch_end if ch_end is not None else meta["chapterEnd"]
 
-    archive_filename = f"One Piece - v{vol_num:02d} (c{start_ch:03d}-{end_ch:03d}).cbz"
+    # 1. First check if chapter CBZ archives are available in source
+    if scan_folder_for_bundleable_volumes is not None and bundle_volume_from_chapters is not None:
+        scan_res = scan_folder_for_bundleable_volumes(src_path)
+        ch_map = scan_res.get("chapter_map", {})
+        needed_chs = set(range(start_ch, end_ch + 1))
+        have_chs = [c for c in needed_chs if c in ch_map]
+        if len(have_chs) == len(needed_chs):
+            log_callback(f"Detected complete chapter CBZs ({start_ch}-{end_ch}) in {src_path}. Bundling from chapters...")
+            archive = bundle_volume_from_chapters(
+                vol_num=vol_num,
+                chapter_map=ch_map,
+                output_dir=out_path,
+                sync_catalog=False,
+                log_callback=log_callback,
+            )
+            return str(archive)
+
+    # 2. Fallback: Pack loose image files in source_folder (STRICTLY ignoring 'covers' subfolder!)
+    raw_title = meta.get("title", "").strip()
+    archive_filename = format_volume_filename(vol_num, raw_title)
     archive_dest = out_path / archive_filename
 
-    log_callback(f"Scanning source directory: {src_path}...")
+
+    log_callback(f"Scanning source directory for loose images: {src_path} (excluding 'covers' subfolder)...")
     valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif"}
     
-    # Collect all image files recursively
+    # Collect all image files recursively, strictly excluding 'covers'
     image_files = [
         f for f in src_path.rglob("*")
-        if f.is_file() and f.suffix.lower() in valid_exts and not f.name.startswith(".")
+        if f.is_file() and f.suffix.lower() in valid_exts and not f.name.startswith(".") and not is_covers_path(f)
     ]
     image_files.sort(key=lambda p: natural_sort_key(p.name))
 
     page_count = len(image_files)
-    log_callback(f"Found {page_count} image pages in source.")
+    if page_count == 0:
+        raise FileNotFoundError(
+            f"No loose image pages or complete chapter CBZs found in {src_path} for Volume {vol_num} (Chapters {start_ch}-{end_ch}). Note: 'covers' subfolder is intentionally excluded."
+        )
 
-    comic_info_xml = build_comic_info_xml(
-        series="One Piece",
-        volume=vol_num,
-        number=vol_num,
-        ch_start=start_ch,
-        ch_end=end_ch,
-        count=page_count,
-        title=meta["title"],
-        summary=meta["summary"],
-    )
+    log_callback(f"Found {page_count} loose image pages in source (covers excluded).")
+
+    # Locate covers & Viz metadata
+    resolved_covers = find_covers_dir([src_path, out_path]) if find_covers_dir else None
+    cover_file = find_volume_cover_file(resolved_covers, vol_num) if find_volume_cover_file else None
+    viz_meta = load_viz_volumes_metadata(resolved_covers).get(vol_num, {}) if load_viz_volumes_metadata else {}
+
+    display_title = format_volume_display_title(vol_num, raw_title)
+    total_pages = 0
 
     log_callback(f"Packing into archive: {archive_dest.name}...")
     with zipfile.ZipFile(archive_dest, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("ComicInfo.xml", comic_info_xml.encode("utf-8"))
-        for i, img_path in enumerate(image_files, 1):
-            arc_name = f"page_{i:04d}{img_path.suffix.lower()}"
-            z.write(img_path, arcname=arc_name)
+        # Front cover
+        if cover_file:
+            c_ext = cover_file.suffix.lower() or ".jpg"
+            z.write(cover_file, arcname=f"page_0000_cover{c_ext}")
+            total_pages += 1
+            log_callback(f"   [Front Cover] Embedded {cover_file.name} as page_0000_cover{c_ext}")
 
-    log_callback(f"Volume {vol_num} CBZ created successfully! ({archive_dest})")
+        # Loose story pages
+        page_idx = 1
+        for img_path in image_files:
+            arc_name = f"page_{page_idx:04d}{img_path.suffix.lower()}"
+            z.write(img_path, arcname=arc_name)
+            page_idx += 1
+            total_pages += 1
+
+        # Back cover
+        real_back_file = find_volume_back_cover_file(resolved_covers, vol_num) if find_volume_back_cover_file else None
+        if real_back_file:
+            bc_ext = real_back_file.suffix.lower() or ".jpg"
+            z.write(real_back_file, arcname=f"page_{page_idx:04d}_back_cover{bc_ext}")
+            total_pages += 1
+            log_callback(f"   [Back Cover] Embedded authentic Shueisha back cover {real_back_file.name}")
+        elif generate_volume_back_cover_bytes:
+            try:
+                bc_bytes = generate_volume_back_cover_bytes(vol_num, viz_meta)
+                bc_name = f"page_{page_idx:04d}_back_cover.jpg"
+                z.writestr(bc_name, bc_bytes)
+                total_pages += 1
+                log_callback(f"   [Back Cover] Generated & embedded Viz description back cover ({bc_name})")
+            except Exception as e:
+                log_callback(f"   [Notice] Could not render back cover: {e}")
+
+        # ComicInfo.xml
+        summary_text = (
+            viz_meta.get("description")
+            or meta.get("summary")
+            or f"One Piece Volume {vol_num} (Chapters {start_ch}-{end_ch})."
+        )
+        comic_info_xml = build_comic_info_xml(
+            series="One Piece",
+            volume=vol_num,
+            number=vol_num,
+            ch_start=start_ch,
+            ch_end=end_ch,
+            count=total_pages,
+            title=display_title,
+            summary=summary_text,
+            language_iso="en",
+        )
+        z.writestr("ComicInfo.xml", comic_info_xml.encode("utf-8"))
+
+    log_callback(f"Volume {vol_num} CBZ created successfully! ({archive_dest}, {total_pages} pages)")
+
     return str(archive_dest)
 
 
@@ -230,6 +396,7 @@ class MangaOrganizerApp:
         base_dir = Path(__file__).resolve().parent.parent
         self.default_output_dir = str(base_dir / "frontend" / "public" / "comics")
         self.output_index_path = str(base_dir / "frontend" / "public" / "comics" / "index.json")
+        self.cancel_download = False
 
         self._build_ui()
 
@@ -263,7 +430,9 @@ class MangaOrganizerApp:
         src_label.grid(row=0, column=0, sticky="w", padx=16, pady=(14, 2))
 
         self.src_entry = ctk.CTkEntry(content_frame, placeholder_text="Select folder with loose images or chapter files...", width=520)
+        self.src_entry.insert(0, self.default_output_dir)
         self.src_entry.grid(row=1, column=0, sticky="ew", padx=16, pady=4)
+        self.src_entry.bind("<KeyRelease>", lambda e: self._scan_and_update_ready_volumes())
 
         browse_src_btn = ctk.CTkButton(content_frame, text="Browse...", width=110, command=self._browse_source)
         browse_src_btn.grid(row=1, column=1, padx=(0, 16), pady=4)
@@ -279,24 +448,140 @@ class MangaOrganizerApp:
         browse_out_btn = ctk.CTkButton(content_frame, text="Browse...", width=110, command=self._browse_output)
         browse_out_btn.grid(row=3, column=1, padx=(0, 16), pady=4)
 
-        # 3. Volume and Metadata Configuration
-        meta_frame = ctk.CTkFrame(content_frame, fg_color="#1e2235", corner_radius=8)
-        meta_frame.grid(row=4, column=0, columnspan=2, sticky="ew", padx=16, pady=12)
+        # 3. Auto-Detected Volume Bundler (From Chapter CBZs)
+        bundler_frame = ctk.CTkFrame(content_frame, fg_color="#181d2e", corner_radius=10, border_width=1, border_color="#2b3350")
+        bundler_frame.grid(row=4, column=0, columnspan=2, sticky="ew", padx=16, pady=(8, 12))
 
-        vol_lbl = ctk.CTkLabel(meta_frame, text="Volume #:")
-        vol_lbl.grid(row=0, column=0, padx=(12, 4), pady=10)
-        self.vol_spin = ctk.CTkEntry(meta_frame, width=60)
-        self.vol_spin.insert(0, "1")
-        self.vol_spin.grid(row=0, column=1, padx=4, pady=10)
-        self.vol_spin.bind("<KeyRelease>", self._on_volume_changed)
+        # Status Line + Rescan button
+        header_row = ctk.CTkFrame(bundler_frame, fg_color="transparent")
+        header_row.pack(fill="x", padx=12, pady=(10, 4))
 
-        self.meta_preview_lbl = ctk.CTkLabel(
-            meta_frame,
-            text="Canon: Romance Dawn (Ch 1-8) • East Blue Saga",
-            font=ctk.CTkFont(size=12, slant="italic"),
+        self.bundler_status_lbl = ctk.CTkLabel(
+            header_row,
+            text="Scanning folder for chapter CBZs...",
+            font=ctk.CTkFont(size=12, weight="bold"),
             text_color="#38bdf8",
+            justify="left",
         )
-        self.meta_preview_lbl.grid(row=0, column=2, padx=16, pady=10, sticky="w")
+        self.bundler_status_lbl.pack(side="left", anchor="w")
+
+        rescan_btn = ctk.CTkButton(
+            header_row,
+            text="🔄 Re-Scan",
+            width=80,
+            height=26,
+            fg_color="#334155",
+            hover_color="#475569",
+            font=ctk.CTkFont(size=12),
+            command=self._scan_and_update_ready_volumes,
+        )
+        rescan_btn.pack(side="right")
+
+        # Action Buttons, Checkbox & Volume Dropdown
+        action_row = ctk.CTkFrame(bundler_frame, fg_color="transparent")
+        action_row.pack(fill="x", padx=12, pady=(4, 6))
+
+        self.bundle_all_btn = ctk.CTkButton(
+            action_row,
+            text="📦 Bundle All Ready Volumes",
+            font=ctk.CTkFont(weight="bold"),
+            fg_color="#10b981",
+            hover_color="#059669",
+            width=200,
+            command=self._start_bundle_all_thread,
+        )
+        self.bundle_all_btn.pack(side="left", padx=(0, 8))
+
+        # WebP Compression Checkbox
+        self.webp_var = ctk.BooleanVar(value=True)
+        self.webp_check = ctk.CTkCheckBox(
+            action_row,
+            text="🗜️ WebP (Save 65%)",
+            variable=self.webp_var,
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#38bdf8",
+            width=140,
+        )
+        self.webp_check.pack(side="left", padx=(0, 8))
+
+        # Bundle & Push to R2 Button
+        self.bundle_push_r2_btn = ctk.CTkButton(
+            action_row,
+            text="🚀 Bundle & Push to R2",
+            font=ctk.CTkFont(weight="bold"),
+            fg_color="#ea580c",
+            hover_color="#c2410c",
+            width=160,
+            command=self._start_bundle_and_push_r2_thread,
+        )
+        self.bundle_push_r2_btn.pack(side="left", padx=(0, 8))
+
+        # Check New Chapters Button
+        self.check_new_ch_btn = ctk.CTkButton(
+            action_row,
+            text="🔔 Check New Chs",
+            font=ctk.CTkFont(weight="bold", size=11),
+            fg_color="#4f46e5",
+            hover_color="#4338ca",
+            width=135,
+            command=self._check_for_new_chapters,
+        )
+        self.check_new_ch_btn.pack(side="left", padx=(0, 8))
+
+        # Secondary Row for Single Volume selection
+        action_row_2 = ctk.CTkFrame(bundler_frame, fg_color="transparent")
+        action_row_2.pack(fill="x", padx=12, pady=(0, 8))
+
+        sel_lbl = ctk.CTkLabel(action_row_2, text="Or Select Volume:", font=ctk.CTkFont(size=12, weight="bold"))
+        sel_lbl.pack(side="left", padx=(0, 6))
+
+        self.ready_vol_menu = ctk.CTkOptionMenu(
+            action_row_2,
+            values=["(Scanning...)"],
+            width=260,
+            fg_color="#1e2235",
+            button_color="#2d3246",
+        )
+        self.ready_vol_menu.pack(side="left", padx=(0, 8))
+
+        self.bundle_selected_btn = ctk.CTkButton(
+            action_row_2,
+            text="📦 Bundle Selected",
+            font=ctk.CTkFont(weight="bold"),
+            fg_color="#2563eb",
+            hover_color="#1d4ed8",
+            width=140,
+            command=self._start_bundle_selected_thread,
+        )
+        self.bundle_selected_btn.pack(side="left")
+
+        # Third Row for Partial Volumes (1-Click Missing Chapters Download)
+        action_row_3 = ctk.CTkFrame(bundler_frame, fg_color="transparent")
+        action_row_3.pack(fill="x", padx=12, pady=(0, 8))
+
+        partial_lbl = ctk.CTkLabel(action_row_3, text="Partial Volumes:", font=ctk.CTkFont(size=12, weight="bold"), text_color="#f59e0b")
+        partial_lbl.pack(side="left", padx=(0, 6))
+
+        self.partial_vol_menu = ctk.CTkOptionMenu(
+            action_row_3,
+            values=["(Scanning partials...)"],
+            width=260,
+            fg_color="#1e2235",
+            button_color="#2d3246",
+        )
+        self.partial_vol_menu.pack(side="left", padx=(0, 8))
+
+        self.download_missing_btn = ctk.CTkButton(
+            action_row_3,
+            text="⚡ Download Missing",
+            font=ctk.CTkFont(weight="bold"),
+            fg_color="#d97706",
+            hover_color="#b45309",
+            width=150,
+            command=self._start_download_missing_thread,
+        )
+        self.download_missing_btn.pack(side="left")
+
 
         # 4. MangaPlus URL Downloader & Language Selector
         mp_container = ctk.CTkFrame(content_frame, fg_color="transparent")
@@ -345,39 +630,55 @@ class MangaOrganizerApp:
         )
         download_mp_btn.pack(side="left")
 
-        # 5. MangaDex Chapter Downloader (For app-locked middle chapters)
+        # 5. Manga Chapter Downloader (MangaDex Colored & WeebCentral Official B&W)
         md_container = ctk.CTkFrame(content_frame, fg_color="transparent")
         md_container.grid(row=7, column=0, columnspan=2, sticky="ew", padx=16, pady=(6, 2))
 
-        md_label = ctk.CTkLabel(md_container, text="Or Download App-Locked Chapters from MangaDex:", font=ctk.CTkFont(size=13, weight="bold"))
+        md_label = ctk.CTkLabel(
+            md_container, 
+            text="Download Chapters / Ranges (Supports 1-10, 1-1190, etc.):", 
+            font=ctk.CTkFont(size=13, weight="bold")
+        )
         md_label.pack(side="left", anchor="w")
 
         md_input_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
         md_input_frame.grid(row=8, column=0, columnspan=2, sticky="ew", padx=16, pady=(0, 10))
 
-        self.md_entry = ctk.CTkEntry(md_input_frame, placeholder_text="Chapter # (e.g. 4, 14, 100...)", width=200)
+        self.md_entry = ctk.CTkEntry(md_input_frame, placeholder_text="Chapter or Range (e.g. 1-10 or 1-1190)", width=230)
         self.md_entry.pack(side="left", padx=(0, 8))
 
         self.md_edition_menu = ctk.CTkOptionMenu(
             md_input_frame,
-            values=["Official Colored", "Standard B&W"],
-            width=150,
+            values=["Official Colored (Ch 1-764+)", "Official Viz B&W (Ch 1-1193+)"],
+            width=210,
             fg_color="#1e2235",
             button_color="#2d3246",
         )
-        self.md_edition_menu.set("Official Colored")
+        self.md_edition_menu.set("Official Colored (Ch 1-764+)")
         self.md_edition_menu.pack(side="left", padx=(0, 8))
 
-        download_md_btn = ctk.CTkButton(
+        self.download_md_btn = ctk.CTkButton(
             md_input_frame, 
-            text="📥 Fetch from MangaDex", 
-            width=180, 
+            text="📥 Download Range", 
+            width=150, 
             fg_color="#0284c7", 
             hover_color="#0369a1", 
             font=ctk.CTkFont(weight="bold"),
             command=self._start_mangadex_thread
         )
-        download_md_btn.pack(side="left")
+        self.download_md_btn.pack(side="left", padx=(0, 6))
+
+        self.stop_md_btn = ctk.CTkButton(
+            md_input_frame, 
+            text="⏹ Stop", 
+            width=70, 
+            fg_color="#475569", 
+            hover_color="#334155", 
+            font=ctk.CTkFont(weight="bold"),
+            command=self._stop_mangadex_thread,
+            state="disabled"
+        )
+        self.stop_md_btn.pack(side="left")
 
         # Action Buttons Row
         btn_frame = ctk.CTkFrame(self.root, fg_color="transparent")
@@ -411,6 +712,16 @@ class MangaOrganizerApp:
         )
         self.sync_btn.pack(side="left", padx=8)
 
+        self.r2_btn = ctk.CTkButton(
+            btn_frame,
+            text="☁️ Cloudflare R2 Sync",
+            fg_color="#ea580c",
+            hover_color="#c2410c",
+            font=ctk.CTkFont(weight="bold"),
+            command=self._open_r2_dialog,
+        )
+        self.r2_btn.pack(side="left", padx=8)
+
         # Progress bar
         self.progress_bar = ctk.CTkProgressBar(self.root)
         self.progress_bar.set(0)
@@ -425,6 +736,9 @@ class MangaOrganizerApp:
 
         self.log("Ready. Select source images or click 'Generate Demo Sample CBZ' to test immediately.")
 
+        # Initial scan after UI loads
+        self.root.after(300, self._scan_and_update_ready_volumes)
+
     def log(self, text: str):
         timestamp = time.strftime("[%H:%M:%S] ")
         self.log_box.insert("end", timestamp + text + "\n")
@@ -436,6 +750,7 @@ class MangaOrganizerApp:
             self.src_entry.delete(0, "end")
             self.src_entry.insert(0, folder)
             self.log(f"Selected source: {folder}")
+            self._scan_and_update_ready_volumes()
 
     def _browse_output(self):
         folder = filedialog.askdirectory(title="Select Output Directory")
@@ -443,6 +758,349 @@ class MangaOrganizerApp:
             self.out_entry.delete(0, "end")
             self.out_entry.insert(0, folder)
             self.log(f"Selected output: {folder}")
+
+    def _scan_and_update_ready_volumes(self):
+        src = self.src_entry.get().strip() or self.default_output_dir
+        if not os.path.exists(src):
+            self.bundler_status_lbl.configure(
+                text="Source directory does not exist yet.",
+                text_color="#f87171"
+            )
+            self.ready_vol_menu.configure(values=["(No folder)"])
+            self.bundle_all_btn.configure(state="disabled", text="📦 Bundle All Ready Volumes")
+            return
+
+        if scan_folder_for_bundleable_volumes is None:
+            self.bundler_status_lbl.configure(text="volume_bundler module not available.")
+            return
+
+        res = scan_folder_for_bundleable_volumes(src)
+        self.last_scan_res = res
+
+        ready = res.get("ready_volumes", [])
+        unbundled_ready = [v for v in ready if not v["is_bundled"]]
+        already_bundled = [v for v in ready if v["is_bundled"]]
+        partials = res.get("partial_volumes", [])
+        total_ch = res.get("total_chapters", 0)
+
+        # Status message
+        if unbundled_ready:
+            status_text = (
+                f"📁 Found {total_ch} Chapter CBZs • {len(unbundled_ready)} Volumes Ready to Bundle! "
+                f"({len(already_bundled)} already bundled)\n"
+                f"   [Subfolder 'covers' safely excluded]"
+            )
+            text_color = "#38bdf8"
+        elif ready:
+            status_text = (
+                f"📁 Found {total_ch} Chapter CBZs • All {len(ready)} ready volumes are already bundled!\n"
+                f"   [Subfolder 'covers' safely excluded]"
+            )
+            text_color = "#34d399"
+        else:
+            status_text = (
+                f"📁 Found {total_ch} Chapter CBZs in source • No complete volume chapter sets detected yet.\n"
+                f"   [Subfolder 'covers' safely excluded]"
+            )
+            text_color = "#94a3b8"
+
+        self.bundler_status_lbl.configure(text=status_text, text_color=text_color)
+
+        # Populate option menu
+        menu_items = []
+        for v in unbundled_ready:
+            menu_items.append(f"Vol {v['volume']:02d}: {v['title']} (Ch {v['ch_start']}-{v['ch_end']}) [READY]")
+        for v in already_bundled:
+            menu_items.append(f"Vol {v['volume']:02d}: {v['title']} (Ch {v['ch_start']}-{v['ch_end']}) [BUNDLED]")
+
+        if not menu_items:
+            menu_items = ["(No volumes available)"]
+
+        self.ready_vol_menu.configure(values=menu_items)
+        self.ready_vol_menu.set(menu_items[0])
+
+        # Populate partial volumes menu
+        self.partial_volumes_data = partials
+        partial_items = []
+        for p in partials:
+            missing_str = ", ".join(str(c) for c in p["missing"][:4])
+            if len(p["missing"]) > 4:
+                missing_str += "..."
+            partial_items.append(f"Vol {p['volume']:02d}: {p['title']} (Missing {len(p['missing'])}: Ch {missing_str})")
+        if not partial_items:
+            partial_items = ["(No partial volumes - all complete!)"]
+        self.partial_vol_menu.configure(values=partial_items)
+        self.partial_vol_menu.set(partial_items[0])
+        self.download_missing_btn.configure(state="normal" if partials else "disabled")
+
+        # Configure bundle all button
+        btn_text = f"📦 Bundle All Ready Volumes ({len(unbundled_ready)})" if unbundled_ready else "📦 All Ready Volumes Bundled"
+        self.bundle_all_btn.configure(
+            text=btn_text,
+            state="normal" if unbundled_ready else "disabled"
+        )
+
+    def _start_bundle_all_thread(self):
+        src = self.src_entry.get().strip() or self.default_output_dir
+        out = self.out_entry.get().strip() or self.default_output_dir
+        if not os.path.exists(src):
+            messagebox.showerror("Error", f"Source folder not found: {src}")
+            return
+
+        self.bundle_all_btn.configure(state="disabled")
+        self.bundle_selected_btn.configure(state="disabled")
+        self.progress_bar.set(0.0)
+
+        def worker():
+            try:
+                def on_prog(pct, msg):
+                    self.root.after(0, lambda: self.progress_bar.set(pct))
+
+                summary = bundle_all_ready_volumes(
+                    source_dir=src,
+                    output_dir=out,
+                    compress_webp=self.webp_var.get(),
+                    skip_already_bundled=True,
+                    sync_catalog=True,
+                    progress_callback=on_prog,
+                    log_callback=self.log,
+                )
+                self.root.after(0, lambda: self.progress_bar.set(1.0))
+                self.root.after(0, self._scan_and_update_ready_volumes)
+                messagebox.showinfo(
+                    "Bundling Complete",
+                    f"Successfully bundled {summary['bundled']} volume(s) into CBZ!\n"
+                    f"• Bundled: {summary['bundled']}\n"
+                    f"• Skipped (Already Bundled): {summary['skipped']}\n\n"
+                    f"Catalog index.json updated."
+                )
+            except Exception as e:
+                self.log(f"ERROR: {e}")
+                messagebox.showerror("Bundling Failed", str(e))
+            finally:
+                self.root.after(0, lambda: self.bundle_all_btn.configure(state="normal"))
+                self.root.after(0, lambda: self.bundle_selected_btn.configure(state="normal"))
+                if hasattr(self, "bundle_push_r2_btn"):
+                    self.root.after(0, lambda: self.bundle_push_r2_btn.configure(state="normal"))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _start_bundle_selected_thread(self):
+        src = self.src_entry.get().strip() or self.default_output_dir
+        out = self.out_entry.get().strip() or self.default_output_dir
+
+        sel_text = self.ready_vol_menu.get()
+        m = re.search(r"Vol\s+(\d+)", sel_text)
+        if not m:
+            messagebox.showwarning("Selection", "Please select a valid volume from the dropdown.")
+            return
+        vol_num = int(m.group(1))
+
+        self.bundle_all_btn.configure(state="disabled")
+        self.bundle_selected_btn.configure(state="disabled")
+        if hasattr(self, "bundle_push_r2_btn"):
+            self.bundle_push_r2_btn.configure(state="disabled")
+        self.progress_bar.set(0.3)
+
+        def worker():
+            try:
+                scan_res = scan_folder_for_bundleable_volumes(src)
+                ch_map = scan_res.get("chapter_map", {})
+                archive = bundle_volume_from_chapters(
+                    vol_num=vol_num,
+                    chapter_map=ch_map,
+                    output_dir=out,
+                    compress_webp=self.webp_var.get(),
+                    sync_catalog=True,
+                    log_callback=self.log,
+                )
+                self.root.after(0, lambda: self.progress_bar.set(1.0))
+                self.root.after(0, self._scan_and_update_ready_volumes)
+                messagebox.showinfo(
+                    "Volume Bundled",
+                    f"Successfully bundled Volume {vol_num}!\nDestination: {archive.name}"
+                )
+            except Exception as e:
+                self.log(f"ERROR: {e}")
+                messagebox.showerror("Bundling Failed", str(e))
+            finally:
+                self.root.after(0, lambda: self.bundle_all_btn.configure(state="normal"))
+                self.root.after(0, lambda: self.bundle_selected_btn.configure(state="normal"))
+                if hasattr(self, "bundle_push_r2_btn"):
+                    self.root.after(0, lambda: self.bundle_push_r2_btn.configure(state="normal"))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _start_bundle_and_push_r2_thread(self):
+        """Bundles all ready volumes and pushes them directly to Cloudflare R2."""
+        src = self.src_entry.get().strip() or self.default_output_dir
+        out = self.out_entry.get().strip() or self.default_output_dir
+        if not os.path.exists(src):
+            messagebox.showerror("Error", f"Source folder not found: {src}")
+            return
+
+        cfg = load_r2_config() if load_r2_config else {}
+        if not cfg or not cfg.get("access_key_id"):
+            messagebox.showwarning(
+                "R2 Credentials Needed",
+                "Please configure Cloudflare R2 credentials first using the '☁️ Cloudflare R2 Sync' button."
+            )
+            return
+
+        self.bundle_all_btn.configure(state="disabled")
+        self.bundle_selected_btn.configure(state="disabled")
+        self.bundle_push_r2_btn.configure(state="disabled")
+        self.progress_bar.set(0.0)
+
+        def worker():
+            try:
+                self.log("\n[1/2] Bundling ready volumes with WebP compression...")
+                def on_prog(pct, msg):
+                    self.root.after(0, lambda: self.progress_bar.set(pct * 0.5))
+
+                summary = bundle_all_ready_volumes(
+                    source_dir=src,
+                    output_dir=out,
+                    compress_webp=self.webp_var.get(),
+                    skip_already_bundled=True,
+                    sync_catalog=True,
+                    progress_callback=on_prog,
+                    log_callback=self.log,
+                )
+
+                self.log(f"\n[2/2] Pushing volume archives to Cloudflare R2 (bucket: {cfg.get('bucket_name')})...")
+                def on_r2_prog(pct, msg):
+                    self.root.after(0, lambda: self.progress_bar.set(0.5 + pct * 0.5))
+
+                r2_res = sync_comics_folder_to_r2(
+                    comics_dir=out,
+                    only_volumes=True,
+                    sync_catalog_json=True,
+                    progress_callback=on_r2_prog,
+                    log_callback=self.log,
+                )
+                self.root.after(0, lambda: self.progress_bar.set(1.0))
+                self.root.after(0, self._scan_and_update_ready_volumes)
+                messagebox.showinfo(
+                    "Bundle & R2 Push Complete",
+                    f"Pipeline successfully completed!\n\n"
+                    f"• Bundled: {summary['bundled']} volume(s)\n"
+                    f"• Uploaded to R2: {r2_res['uploaded']} archive(s)\n"
+                    f"• R2 Skipped: {r2_res['skipped']} (already synced)\n\n"
+                    f"Showcase catalog updated with live Cloudflare streaming URLs!"
+                )
+            except Exception as e:
+                self.log(f"ERROR: {e}")
+                messagebox.showerror("Pipeline Failed", str(e))
+            finally:
+                self.root.after(0, lambda: self.bundle_all_btn.configure(state="normal"))
+                self.root.after(0, lambda: self.bundle_selected_btn.configure(state="normal"))
+                self.root.after(0, lambda: self.bundle_push_r2_btn.configure(state="normal"))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _start_download_missing_thread(self):
+        """1-Click download for missing chapters in the selected partial volume."""
+        src = self.src_entry.get().strip() or self.default_output_dir
+        if not hasattr(self, "partial_volumes_data") or not self.partial_volumes_data:
+            messagebox.showinfo("Complete", "No partial volumes with missing chapters found!")
+            return
+
+        sel_text = self.partial_vol_menu.get()
+        m = re.search(r"Vol\s+(\d+)", sel_text)
+        if not m:
+            messagebox.showwarning("Selection", "Please select a partial volume from the dropdown.")
+            return
+        vol_num = int(m.group(1))
+
+        target = next((p for p in self.partial_volumes_data if p["volume"] == vol_num), None)
+        if not target or not target["missing"]:
+            messagebox.showinfo("Complete", f"Volume {vol_num} is not missing any chapters!")
+            return
+
+        missing_chapters = target["missing"]
+        self.download_missing_btn.configure(state="disabled")
+        self.bundle_all_btn.configure(state="disabled")
+        self.progress_bar.set(0.1)
+
+        def worker():
+            try:
+                self.log(f"\n⚡ Starting 1-Click download of {len(missing_chapters)} missing chapter(s) for Volume {vol_num}: {missing_chapters}")
+                if download_weebcentral_batch:
+                    download_weebcentral_batch(
+                        chapters=missing_chapters,
+                        output_dir=src,
+                        sync_catalog=True,
+                        log_callback=self.log,
+                    )
+                else:
+                    raise RuntimeError("WeebCentral downloader module not available.")
+
+                self.root.after(0, lambda: self.progress_bar.set(1.0))
+                self.root.after(0, self._scan_and_update_ready_volumes)
+                messagebox.showinfo(
+                    "Download Complete",
+                    f"Successfully downloaded {len(missing_chapters)} missing chapter(s) for Volume {vol_num}!\n"
+                    f"Volume {vol_num} is now ready to bundle."
+                )
+            except Exception as e:
+                self.log(f"ERROR: {e}")
+                messagebox.showerror("Download Failed", str(e))
+            finally:
+                self.root.after(0, lambda: self.download_missing_btn.configure(state="normal"))
+                self.root.after(0, lambda: self.bundle_all_btn.configure(state="normal"))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _check_for_new_chapters(self):
+        """Checks online providers for newly released One Piece chapters and prompts to download."""
+        src = self.src_entry.get().strip() or self.default_output_dir
+        self.check_new_ch_btn.configure(state="disabled")
+
+        def worker():
+            try:
+                self.log("\n🔔 Checking online providers for newly published One Piece chapters...")
+                if not fetch_weebcentral_chapter_map:
+                    raise RuntimeError("Chapter indexer module not available.")
+
+                ch_map = fetch_weebcentral_chapter_map(force_refresh=True, log_callback=self.log)
+                latest_remote = int(max(ch_map.keys()))
+
+                scan_res = scan_folder_for_bundleable_volumes(src)
+                local_chs = scan_res.get("chapter_map", {}).keys()
+                highest_local = max(local_chs) if local_chs else 0
+
+                self.log(f"Latest Online Chapter: {latest_remote} | Highest Local Chapter: {highest_local}")
+
+                if latest_remote > highest_local:
+                    new_count = latest_remote - highest_local
+                    new_range = list(range(highest_local + 1, latest_remote + 1))
+                    if messagebox.askyesno(
+                        "New Chapters Available!",
+                        f"Found {new_count} new One Piece chapter(s) published online!\n\n"
+                        f"• Latest Online: Chapter {latest_remote}\n"
+                        f"• Your Library: Chapter {highest_local}\n"
+                        f"• New: Chapters {new_range[0]} to {new_range[-1]}\n\n"
+                        f"Would you like to download them now?"
+                    ):
+                        self.log(f"Downloading {new_count} new chapters: {new_range}...")
+                        download_weebcentral_batch(new_range, output_dir=src, sync_catalog=True, log_callback=self.log)
+                        self.root.after(0, self._scan_and_update_ready_volumes)
+                        messagebox.showinfo("Downloaded", f"Successfully downloaded {new_count} new chapter(s)!")
+                else:
+                    messagebox.showinfo(
+                        "Up to Date",
+                        f"Your One Piece library is completely up to date!\n\n"
+                        f"Latest Chapter: {latest_remote}"
+                    )
+            except Exception as e:
+                self.log(f"Error checking new chapters: {e}")
+                messagebox.showerror("Check Failed", str(e))
+            finally:
+                self.root.after(0, lambda: self.check_new_ch_btn.configure(state="normal"))
+
+        threading.Thread(target=worker, daemon=True).start()
+
 
     def _on_volume_changed(self, event=None):
         try:
@@ -551,10 +1209,14 @@ class MangaOrganizerApp:
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def _stop_mangadex_thread(self):
+        self.cancel_download = True
+        self.log("\n[User Request] Stopping MangaDex batch download...")
+
     def _start_mangadex_thread(self):
         ch_str = self.md_entry.get().strip()
         if not ch_str:
-            messagebox.showwarning("Missing Chapter", "Please enter a chapter number (e.g. 4, 14, 100).")
+            messagebox.showwarning("Missing Chapter Specification", "Please enter a chapter number or range (e.g. 1-10 or 1-1190).")
             return
 
         edition = "colored" if "colored" in self.md_edition_menu.get().lower() else "bw"
@@ -567,27 +1229,45 @@ class MangaOrganizerApp:
         lang_iso_map = {"eng": "en", "spa": "es", "fre": "fr", "ind": "id", "por": "pt-br", "deu": "de", "tha": "th", "rus": "ru", "vie": "vi"}
         lang_code = lang_iso_map.get(target_lang, target_lang)
 
-        self.log(f"Starting MangaDex download for Chapter {ch_str} ({edition.upper()} edition, lang: {lang_code})...")
-        self.progress_bar.set(0.2)
+        self.cancel_download = False
+        self.download_md_btn.configure(state="disabled")
+        self.stop_md_btn.configure(state="normal")
+        self.progress_bar.set(0.0)
 
         def worker():
             try:
-                if download_mangadex_chapter is None:
+                if download_mangadex_batch is None:
                     raise ImportError("mangadex_downloader module not found.")
-                archive = download_mangadex_chapter(
-                    chapter_num=ch_str,
+
+                def on_progress(pct, status_text):
+                    self.root.after(0, lambda: self.progress_bar.set(pct))
+
+                summary = download_mangadex_batch(
+                    chapter_spec=ch_str,
                     output_dir=out,
                     lang=lang_code,
                     edition=edition,
-                    log_callback=self.log,
+                    skip_existing=True,
                     sync_catalog=True,
+                    progress_callback=on_progress,
+                    log_callback=self.log,
+                    cancel_flag=lambda: self.cancel_download,
                 )
-                self.progress_bar.set(1.0)
-                self.log(f"SUCCESS: Chapter saved at: {archive}")
-                messagebox.showinfo("Success", f"MangaDex chapter downloaded & indexed successfully!\n{archive}")
+                self.root.after(0, lambda: self.progress_bar.set(1.0))
+                self.log(f"\n[Finished] Batch finished: {summary['downloaded']} downloaded, {summary['skipped']} skipped.")
+                messagebox.showinfo(
+                    "MangaDex Batch Complete",
+                    f"Processed chapters: {ch_str}\n"
+                    f"• Downloaded: {summary['downloaded']}\n"
+                    f"• Skipped (Already Cached): {summary['skipped']}\n"
+                    f"• Missing/Failed: {len(summary['failed'])}"
+                )
             except Exception as e:
                 self.log(f"ERROR: {e}")
                 messagebox.showerror("Download Failed", str(e))
+            finally:
+                self.root.after(0, lambda: self.download_md_btn.configure(state="normal"))
+                self.root.after(0, lambda: self.stop_md_btn.configure(state="disabled"))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -597,6 +1277,188 @@ class MangaOrganizerApp:
         manifest = scan_and_index_volumes(out, self.output_index_path)
         self.log(f"Catalog indexed: {len(manifest['volumes'])} volumes, {len(manifest['sagas'])} sagas.")
         messagebox.showinfo("Catalog Synced", f"Catalog updated successfully with {len(manifest['volumes'])} volumes.")
+
+    def _open_r2_dialog(self):
+        """Opens the Cloudflare R2 Free Storage manager window."""
+        dialog = ctk.CTkToplevel(self.root)
+        dialog.title("Cloudflare R2 Free Storage (Zero Egress Bandwidth)")
+        dialog.geometry("680x600")
+        dialog.minsize(620, 520)
+        dialog.grab_set()
+
+        cfg = load_r2_config() if load_r2_config else {}
+
+        # Header info
+        header_frame = ctk.CTkFrame(dialog, fg_color="#181a26")
+        header_frame.pack(fill="x", padx=16, pady=12)
+
+        ctk.CTkLabel(
+            header_frame,
+            text="☁️ Cloudflare R2 Storage (10 GB Free Forever • 0 Bandwidth Fees)",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color="#f97316"
+        ).pack(anchor="w", padx=12, pady=(10, 2))
+
+        ctk.CTkLabel(
+            header_frame,
+            text="Host your volume CBZs on Cloudflare R2 for free with zero egress fees.\n"
+                 "No custom domain required! Uses the free 'pub-xxxx.r2.dev' public URL.",
+            font=ctk.CTkFont(size=11),
+            text_color="#94a3b8",
+            justify="left"
+        ).pack(anchor="w", padx=12, pady=(0, 10))
+
+        # Form fields
+        form = ctk.CTkFrame(dialog, fg_color="transparent")
+        form.pack(fill="x", padx=16, pady=4)
+
+        # 1. Account ID
+        ctk.CTkLabel(form, text="Cloudflare Account ID:", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, sticky="w", pady=4)
+        acc_entry = ctk.CTkEntry(form, width=380, placeholder_text="Found in Cloudflare dashboard URL or R2 overview")
+        acc_entry.insert(0, cfg.get("account_id", ""))
+        acc_entry.grid(row=0, column=1, sticky="ew", pady=4, padx=(8, 0))
+
+        # 2. Access Key ID
+        ctk.CTkLabel(form, text="R2 Access Key ID:", font=ctk.CTkFont(weight="bold")).grid(row=1, column=0, sticky="w", pady=4)
+        key_entry = ctk.CTkEntry(form, width=380, placeholder_text="From 'Manage R2 API Tokens'")
+        key_entry.insert(0, cfg.get("access_key_id", ""))
+        key_entry.grid(row=1, column=1, sticky="ew", pady=4, padx=(8, 0))
+
+        # 3. Secret Access Key
+        ctk.CTkLabel(form, text="R2 Secret Access Key:", font=ctk.CTkFont(weight="bold")).grid(row=2, column=0, sticky="w", pady=4)
+        sec_entry = ctk.CTkEntry(form, width=380, show="•", placeholder_text="From 'Manage R2 API Tokens'")
+        sec_entry.insert(0, cfg.get("secret_access_key", ""))
+        sec_entry.grid(row=2, column=1, sticky="ew", pady=4, padx=(8, 0))
+
+        # 4. Bucket Name
+        ctk.CTkLabel(form, text="R2 Bucket Name:", font=ctk.CTkFont(weight="bold")).grid(row=3, column=0, sticky="w", pady=4)
+        bucket_entry = ctk.CTkEntry(form, width=380, placeholder_text="e.g. one-piece-comics")
+        bucket_entry.insert(0, cfg.get("bucket_name", ""))
+        bucket_entry.grid(row=3, column=1, sticky="ew", pady=4, padx=(8, 0))
+
+        # 5. Public R2.dev URL
+        ctk.CTkLabel(form, text="Public R2.dev URL:", font=ctk.CTkFont(weight="bold")).grid(row=4, column=0, sticky="w", pady=4)
+        pub_entry = ctk.CTkEntry(form, width=380, placeholder_text="e.g. https://pub-xxxxxx.r2.dev")
+        pub_entry.insert(0, cfg.get("public_url", ""))
+        pub_entry.grid(row=4, column=1, sticky="ew", pady=4, padx=(8, 0))
+
+        form.columnconfigure(1, weight=1)
+
+        # Status label
+        status_lbl = ctk.CTkLabel(dialog, text="", font=ctk.CTkFont(size=11))
+        status_lbl.pack(pady=4)
+
+        # Buttons Row 1: Save & Test
+        row1 = ctk.CTkFrame(dialog, fg_color="transparent")
+        row1.pack(fill="x", padx=16, pady=4)
+
+        def get_current_inputs():
+            return {
+                "account_id": acc_entry.get().strip(),
+                "access_key_id": key_entry.get().strip(),
+                "secret_access_key": sec_entry.get().strip(),
+                "bucket_name": bucket_entry.get().strip(),
+                "public_url": pub_entry.get().strip(),
+            }
+
+        def on_save():
+            if save_r2_config is None:
+                messagebox.showerror("Error", "r2_sync module not found.")
+                return
+            vals = get_current_inputs()
+            save_r2_config(**vals)
+            status_lbl.configure(text="✅ Configuration saved to r2_config.json", text_color="#34d399")
+
+        def on_test():
+            if test_r2_connection is None:
+                messagebox.showerror("Error", "r2_sync module not found.")
+                return
+            vals = get_current_inputs()
+            if save_r2_config:
+                save_r2_config(**vals)
+            status_lbl.configure(text="Testing connection...", text_color="#38bdf8")
+            def worker():
+                ok, msg = test_r2_connection(vals)
+                color = "#34d399" if ok else "#f87171"
+                dialog.after(0, lambda: status_lbl.configure(text=msg, text_color=color))
+            threading.Thread(target=worker, daemon=True).start()
+
+        def on_cors():
+            if configure_r2_cors is None:
+                messagebox.showerror("Error", "r2_sync module not found.")
+                return
+            vals = get_current_inputs()
+            if save_r2_config:
+                save_r2_config(**vals)
+            status_lbl.configure(text="Configuring public CORS on bucket...", text_color="#38bdf8")
+            def worker():
+                ok = configure_r2_cors(vals)
+                msg = "✅ Public CORS configured! Web browsers can stream from this bucket." if ok else "❌ Failed to set CORS."
+                color = "#34d399" if ok else "#f87171"
+                dialog.after(0, lambda: status_lbl.configure(text=msg, text_color=color))
+            threading.Thread(target=worker, daemon=True).start()
+
+        ctk.CTkButton(row1, text="💾 Save Config", command=on_save, fg_color="#334155", width=120).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(row1, text="⚡ Test Connection", command=on_test, fg_color="#0284c7", hover_color="#0369a1", width=140).pack(side="left", padx=4)
+        ctk.CTkButton(row1, text="🌐 Set Bucket CORS", command=on_cors, fg_color="#475569", hover_color="#334155", width=150).pack(side="left", padx=4)
+
+        # Upload Actions Row
+        row2 = ctk.CTkFrame(dialog, fg_color="transparent")
+        row2.pack(fill="x", padx=16, pady=(12, 4))
+
+        def start_sync(only_vols: bool):
+            if sync_comics_folder_to_r2 is None:
+                messagebox.showerror("Error", "r2_sync module not found.")
+                return
+            vals = get_current_inputs()
+            if save_r2_config:
+                save_r2_config(**vals)
+            src = self.src_entry.get().strip() or self.default_output_dir
+            status_lbl.configure(text="Starting sync to Cloudflare R2...", text_color="#f97316")
+            dialog.destroy()
+
+            self.progress_bar.set(0.0)
+            def worker():
+                try:
+                    summary = sync_comics_folder_to_r2(
+                        source_dir=src,
+                        config=vals,
+                        only_volumes=only_vols,
+                        progress_callback=lambda pct, msg: self.root.after(0, lambda: (self.progress_bar.set(pct), self.log(msg))),
+                        log_callback=self.log,
+                    )
+                    self.root.after(0, lambda: self.progress_bar.set(1.0))
+                    messagebox.showinfo(
+                        "Cloudflare R2 Sync Complete",
+                        f"Sync complete!\n"
+                        f"• Uploaded: {summary['uploaded']}\n"
+                        f"• Skipped (Up to date): {summary['skipped']}\n"
+                        f"• Failed: {len(summary['failed'])}\n\n"
+                        f"Manga showcase index.json updated."
+                    )
+                except Exception as e:
+                    self.log(f"R2 Sync Error: {e}")
+                    messagebox.showerror("R2 Sync Error", str(e))
+
+            threading.Thread(target=worker, daemon=True).start()
+
+        ctk.CTkButton(
+            row2,
+            text="🚀 Sync Volume CBZs to Cloudflare R2",
+            font=ctk.CTkFont(weight="bold"),
+            fg_color="#f97316",
+            hover_color="#ea580c",
+            command=lambda: start_sync(only_vols=True)
+        ).pack(side="left", fill="x", expand=True, padx=(0, 6))
+
+        ctk.CTkButton(
+            row2,
+            text="📦 Sync All (Volumes + Chapters + Covers)",
+            font=ctk.CTkFont(weight="bold"),
+            fg_color="#d97706",
+            hover_color="#b45309",
+            command=lambda: start_sync(only_vols=False)
+        ).pack(side="left", fill="x", expand=True, padx=(6, 0))
 
 
 # ============================================================================
@@ -616,14 +1478,53 @@ def run_cli():
     parser.add_argument("--mangadex", type=str, help="Download chapter from MangaDex by chapter number (e.g. 4 or 14)")
     parser.add_argument("--edition", type=str, default="colored", choices=["colored", "bw"], help="Edition for MangaDex (colored or bw) [default: colored]")
     parser.add_argument("--lang", type=str, default="eng", help="Target language (eng, spa, fre, ind, por, deu, tha, rus, vie) [default: eng]")
+    parser.add_argument("--bundle-all", action="store_true", help="Auto-bundle all ready volumes from chapter CBZs in source folder")
+    parser.add_argument("--bundle-volume", type=int, help="Bundle a specific volume number from chapter CBZs in source folder")
+    parser.add_argument("--scan-bundles", action="store_true", help="Scan source folder and list ready/partial volumes")
 
     args, unknown = parser.parse_known_args()
 
     # Determine if we should run GUI or CLI
-    if args.cli or args.sample or args.source or args.sync_only or args.mangaplus or args.mangadex or not CTK_AVAILABLE or not os.environ.get("DISPLAY", None) and sys.platform.startswith("linux"):
+    if args.cli or args.sample or args.source or args.sync_only or args.mangaplus or args.mangadex or args.bundle_all or args.bundle_volume or args.scan_bundles or not CTK_AVAILABLE or not os.environ.get("DISPLAY", None) and sys.platform.startswith("linux"):
         # Run CLI mode
         out_dir = Path(args.output).resolve()
         index_dest = out_dir / "index.json"
+
+        if args.scan_bundles:
+            src = args.source or str(out_dir)
+            if scan_folder_for_bundleable_volumes is None:
+                raise ImportError("volume_bundler module not found.")
+            res = scan_folder_for_bundleable_volumes(src)
+            print(f"\n[CLI] Scanned: {res['source_path']}")
+            print(f"Total Chapter CBZs Found: {res['total_chapters']} (subfolder 'covers' ignored)\n")
+            print("=== Ready to Bundle Volumes ===")
+            for v in res["ready_volumes"]:
+                tag = "[ALREADY BUNDLED]" if v["is_bundled"] else "[READY!]"
+                print(f"  Vol {v['volume']:2d} (Ch {v['ch_start']:3d}-{v['ch_end']:3d}): {v['total_chapters']} chapters {tag} - '{v['title']}'")
+            if res["partial_volumes"]:
+                print("\n=== Partial Volumes ===")
+                for v in res["partial_volumes"]:
+                    print(f"  Vol {v['volume']:2d} (Ch {v['ch_start']:3d}-{v['ch_end']:3d}): {v['have_count']}/{v['needed_count']} chapters - '{v['title']}'")
+            return 0
+
+        if args.bundle_all:
+            src = args.source or str(out_dir)
+            print(f"[CLI] Auto-bundling all ready volumes from '{src}' into '{args.output}'...")
+            if bundle_all_ready_volumes is None:
+                raise ImportError("volume_bundler module not found.")
+            res = bundle_all_ready_volumes(source_dir=src, output_dir=out_dir, sync_catalog=True)
+            print(f"[CLI] Finished! Bundled: {res['bundled']}, Skipped: {res['skipped']}, Failed: {len(res['failed'])}")
+            return 0
+
+        if args.bundle_volume:
+            src = args.source or str(out_dir)
+            print(f"[CLI] Bundling Volume {args.bundle_volume} from '{src}' into '{args.output}'...")
+            if scan_folder_for_bundleable_volumes is None or bundle_volume_from_chapters is None:
+                raise ImportError("volume_bundler module not found.")
+            scan_res = scan_folder_for_bundleable_volumes(src)
+            archive = bundle_volume_from_chapters(vol_num=args.bundle_volume, chapter_map=scan_res["chapter_map"], output_dir=out_dir, sync_catalog=True)
+            print(f"[CLI] Finished! Archive: {archive}")
+            return 0
 
         if args.mangaplus:
             print(f"[CLI] Downloading MangaPlus chapter ({args.lang.upper()}): {args.mangaplus}...")
@@ -632,22 +1533,25 @@ def run_cli():
             except ImportError:
                 from mangaplus_downloader import download_mangaplus_chapter
             archive = download_mangaplus_chapter(args.mangaplus, output_dir=out_dir, target_lang=args.lang)
+
             print(f"[CLI] Finished! Archive: {archive}")
             return 0
 
         if args.mangadex:
             lang_iso_map = {"eng": "en", "spa": "es", "fre": "fr", "ind": "id", "por": "pt-br", "deu": "de", "tha": "th", "rus": "ru", "vie": "vi"}
             lang_code = lang_iso_map.get(args.lang, args.lang)
-            print(f"[CLI] Downloading MangaDex Chapter {args.mangadex} ({args.edition.upper()} edition, lang: {lang_code})...")
-            if download_mangadex_chapter is None:
+            print(f"[CLI] Processing MangaDex chapters ({args.mangadex}) [{args.edition.upper()}, lang: {lang_code}]...")
+            if download_mangadex_batch is None:
                 raise ImportError("mangadex_downloader module not found.")
-            archive = download_mangadex_chapter(
-                chapter_num=args.mangadex,
+            summary = download_mangadex_batch(
+                chapter_spec=args.mangadex,
                 output_dir=out_dir,
                 lang=lang_code,
                 edition=args.edition,
+                skip_existing=True,
+                sync_catalog=True,
             )
-            print(f"[CLI] Finished! Archive: {archive}")
+            print(f"[CLI] Finished! Downloaded: {summary['downloaded']}, Skipped: {summary['skipped']}, Failed: {len(summary['failed'])}")
             return 0
 
         if args.sample:

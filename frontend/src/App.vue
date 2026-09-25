@@ -1,5 +1,27 @@
 <template>
-  <div class="min-h-screen bg-[#0a0c12] text-[#e1e2ec] flex flex-col selection:bg-sky-500/30 selection:text-sky-200">
+  <div class="min-h-screen bg-[#0a0c12] text-[#e1e2ec] flex flex-col selection:bg-sky-500/30 selection:text-sky-200 relative overflow-x-hidden">
+    
+    <!-- Dynamic Saga Ambient Glow & Floating Particles -->
+    <div 
+      class="fixed inset-0 pointer-events-none z-0 overflow-hidden transition-all duration-700"
+      :style="{
+        background: `radial-gradient(circle at 50% 5%, ${activeSagaColor}18 0%, transparent 65%)`
+      }"
+    >
+      <div 
+        v-for="p in ambientParticles" 
+        :key="p.id"
+        class="absolute rounded-full pointer-events-none animate-pulse opacity-40 transition-colors duration-700"
+        :style="{
+          left: `${p.x}%`,
+          top: `${p.y}%`,
+          width: `${p.size}px`,
+          height: `${p.size}px`,
+          backgroundColor: activeSagaColor,
+          boxShadow: `0 0 10px ${activeSagaColor}`,
+        }"
+      ></div>
+    </div>
     
     <!-- TOP MD3 APP BAR / HEADER -->
     <header class="sticky top-0 z-40 glass-nav">
@@ -252,8 +274,13 @@
         </button>
       </div>
 
-      <!-- Arc-Separated Storyline Sections -->
-      <template v-if="libraryStore.groupedBySaga.length > 0">
+      <!-- 3D Bookshelf View Mode -->
+      <template v-if="libraryStore.viewMode === 'shelf'">
+        <ShelfView3D :volumes="libraryStore.filteredVolumes" />
+      </template>
+
+      <!-- Arc-Separated Storyline Sections (Grid and List modes) -->
+      <template v-else-if="libraryStore.groupedBySaga.length > 0">
         <ArcSection 
           v-for="group in libraryStore.groupedBySaga" 
           :key="group.saga.id"
@@ -311,12 +338,12 @@
     <!-- ========================================================================= -->
     <div 
       v-if="libraryStore.isReading && libraryStore.activePages.length > 0"
-      class="fixed inset-0 z-50 bg-[#0a0c12] flex flex-col select-none overflow-hidden"
+      class="fixed inset-0 z-50 bg-black flex flex-col select-none overflow-hidden"
     >
       <!-- Floating MD3 HUD Controls -->
       <ReaderControls 
         :title="libraryStore.activeVolume?.title"
-        :subtitle="`Volume ${libraryStore.activeVolume?.volumeNumber} • ${libraryStore.activeVolume?.arcName || libraryStore.activeVolume?.sagaName}`"
+        :subtitle="readerSubtitle"
         :currentPage="currentReadingPage"
         :totalPages="libraryStore.activePages.length"
         :currentMode="progressStore.readMode"
@@ -431,6 +458,7 @@ import { useProgressStore } from './stores/progress.js';
 import ArcSection from './components/Dashboard/ArcSection.vue';
 import VolumeCard3D from './components/Dashboard/VolumeCard3D.vue';
 import ViewSwitcher from './components/Dashboard/ViewSwitcher.vue';
+import ShelfView3D from './components/Dashboard/ShelfView3D.vue';
 import FlipBookView from './components/Reader/FlipBookView.vue';
 import WebtoonView from './components/Reader/WebtoonView.vue';
 import ReaderControls from './components/Reader/ReaderControls.vue';
@@ -452,14 +480,30 @@ const isCurrentPageBookmarked = computed(() => {
   return progressStore.isBookmarked(libraryStore.activeVolume.id, currentReadingPage.value);
 });
 
+const readerSubtitle = computed(() => {
+  const vol = libraryStore.activeVolume;
+  if (!vol) return 'Manga Reader';
+  if (vol.type === 'chapter') {
+    return `Chapter ${vol.chapterStart || ''} • ${vol.arcName || vol.sagaName || 'Single Chapter'}`;
+  }
+  return `Volume ${vol.volumeNumber} • ${vol.arcName || vol.sagaName}`;
+});
+
 function onPageChange(pageNum) {
   currentReadingPage.value = pageNum;
   if (libraryStore.activeVolume) {
+    const act = libraryStore.activeVolume;
     progressStore.saveProgress(
-      libraryStore.activeVolume.id,
+      act.id,
       pageNum,
       libraryStore.activePages.length,
-      libraryStore.activeVolume.chapterStart
+      act.chapterStart,
+      {
+        title: act.title,
+        type: act.type || (act.isRealVolume ? 'volume' : (act.id.includes('chapter') ? 'chapter' : 'volume')),
+        coverUrl: act.coverUrl,
+        fileName: act.fileName,
+      }
     );
   }
 }
@@ -506,6 +550,21 @@ function startAdventure() {
     libraryStore.openReader(libraryStore.volumes[0]);
   }
 }
+
+const activeSagaColor = computed(() => {
+  if (!libraryStore.activeSagaFilter || libraryStore.activeSagaFilter === 'all') {
+    return '#38bdf8';
+  }
+  const saga = libraryStore.sagas.find(s => s.id === libraryStore.activeSagaFilter);
+  return saga?.themeColor || '#38bdf8';
+});
+
+const ambientParticles = Array.from({ length: 16 }, (_, i) => ({
+  id: i,
+  x: Math.floor(Math.random() * 94) + 3,
+  y: Math.floor(Math.random() * 88) + 6,
+  size: Math.floor(Math.random() * 5) + 3,
+}));
 
 onMounted(() => {
   libraryStore.loadCatalog();

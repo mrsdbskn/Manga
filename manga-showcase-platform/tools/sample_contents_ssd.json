@@ -1,0 +1,312 @@
+{
+  "count": 1,
+  "datas": [
+    {
+      "ssid": 10129584,
+      "item_kbn": "1",
+      "isbn": "978-4-08-885130-3",
+      "isbn_10": "4-08-885130-7",
+      "isbn_13": "978-4-08-885130-3",
+      "jdcn": null,
+      "bottom_isbn_13": null,
+      "set_flg": 0,
+      "view_series_number": "115",
+      "item_name": "ONE PIECE／115",
+      "item_name_1": "",
+      "item_name_2": "ONE PIECE",
+      "item_name_3": "",
+      "item_name_kana": "ワンピース／115",
+      "item_name_kana_1": "",
+      "item_name_kana_2": "ワンピース",
+      "item_name_kana_3": "",
+      "release_date": "2026-07-03",
+      "paper_release_date": null,
+      "price_view_flg": 0,
+      "price": 594,
+      "body_price": 540,
+      "product_form_name": "新書判",
+      "number_of_pages": "248",
+      "color_kbn": null,
+      "introduction": "理想の世界を追い求め尽力していたハラルド。名君と呼ばれた王と息子ロキの間に一体何が!?　そして全てを知ったルフィ達はエルバフを救うため反撃を開始する!!　“ひとつなぎの大秘宝”を巡る海洋冒険ロマン!!",
+      "table_of_contents": "",
+      "classification_datas": [
+        "少年"
+      ],
+      "classification_bit": 1,
+      "pre_item": {
+        "ssid": 10127698,
+        "isbn": "978-4-08-885019-1",
+        "jdcn": null
+      },
+      "next_item": {
+        "ssid": null,
+        "isbn": null,
+        "jdcn": null
+      },
+      "tameshiyomi_flg": "1",
+      "tameshiyomi_url": "http://books.shueisha.co.jp/reader/main.php?cid=9784088851303",
+      "category_datas": [
+        "コミック・ラノベ・BL"
+      ],
+      "publication_magazine_datas": [
+        {
+          "magazine_ellipsis": "shonenjump",
+          "magazine_name": "週刊少年ジャンプ",
+          "front_view_flg": "1",
+          "image_url": "https://dosbg3xlm0x1t.cloudfront.net/images/items/20264912299311063/1200/20264912299311063.jpg",
+          "publish_term": "毎週月曜日発売"
+        }
+      ],
+      "label_data": {
+        "label_group_id": 1001,
+        "label_group_name": "少年",
+        "label_id": 1000,
+        "label_name": "ジャンプコミックス",
+        "label_image_url": ""
+      },
+      "author_name_datas": [
+        "尾田 栄一郎"
+      ],
+      "author_name_kana_datas": [
+        "オダ エイイチロウ"
+      ],
+      "author_role_datas": [
+        "著者"
+      ],
+      "image_datas": [
+        {
+          "seq": 100,
+          "image_type": "2",
+          "book_type": "1",
+          "image_url_l": "https://dosbg3xlm0x1t.cloudfront.net/images/items/9784088851303/1200/9784088851303.jpg",
+          "image_url_m": "https://dosbg3xlm0x1t.cloudfront.net/images/items/9784088851303/500/9784088851303.jpg",
+          "image_url_s": "https://dosbg3xlm0x1t.cloudfront.net/images/items/9784088851303/240/9784088851303.jpg"
+        },
+        {
+          "seq": 130,
+          "image_type": "3",
+          "book_type": "3",
+          "image_url_l": "https://dosbg3xlm0x1t.cloudfront.net/images/items/9784088851303/1200/9784088851303_130.jpg",
+          "image_url_m": "https://dosbg3xlm0x1t.cloudfront.net/images/items/9784088851303/500/9784088851303_130.jpg",
+          "image_url_s": "https://dosbg3xlm0x1t.cloudfront.net/images/items/9784088851303/240/9784088851303_130.jpg"
+        },
+        {
+          "seq": 150,
+          "image_type": "3",
+          "book_type": "9",
+          "image_url_l": "https://dosbg3xlm0x1t.cloudfront.net/images/items/9784088851303/1200/9784088851303_150.jpg",
+          "image_url_m": "https://dosbg3xlm0x1t.cloudfront.net/images/items/9784088851303/500/9784088851303_150.jpg",
+          "image_url_s": "https://dosbg3xlm0x1t.cloudfront.net/images/items/9784088851303/240/9784088851303_150.jpg"
+        }
+      ],
+      "tameshiyomi_datas": [
+        {
+          "start_date": "2026-07-02",
+          "end_date": null,
+          "url": "http://books.shueisha.co.jp/reader/main.php?cid=9784088851303"
+        }
+      ],
+      "tag_datas": [
+        {
+          "tag_id": 104,
+          "tag_kbn": "1",
+          "tag_name": "1990年代"
+        },
+        {
+          "tag_id": 201,
+          "tag_kbn": "2",
+          "tag_name": "少年"
+        },
+        {
+          "tag_id": 303,
+          "tag_kbn": "3",
+          "tag_name": "アニメ映画化"
+        },
+        {
+          "tag_id": 304,
+          "tag_kbn": "3",
+          "tag_name": "アニメ化"
+        },
+        {
+          "tag_id": 403,
+          "tag_kbn": "4",
+          "tag_name": "このマンガがすごい！"
+        }
+      ],
+      "same_item_datas": {
+        "paper_data": {
+          "ssid": 10129584,
+          "isbn": "978-4-08-885130-3",
+          "isbn_10": "4-08-885130-7",
+          "isbn_13": "978-4-08-885130-3",
+          "release_date": "2026-07-03",
+          "product_form_name": "新書判",
+          "number_of_pages": "248",
+          "price_view_flg": 0,
+          "price": 594,
+          "body_price": 540
+        },
+        "digital_data": {
+          "ssid": 10129783,
+          "jdcn": "08X10000000072625600",
+          "release_date": "2026-08-04"
+        },
+        "digital_color_data": {
+          "ssid": null,
+          "jdcn": null,
+          "release_date": null
+        },
+        "audiobook_data": {
+          "ssid": null,
+          "jdcn": null,
+          "release_date": null
+        }
+      },
+      "series_data": {
+        "series_id": 35169,
+        "series_count": 115,
+        "series_name": "ONE PIECE",
+        "series_name_1": null,
+        "series_name_2": "ONE PIECE",
+        "series_name_3": null,
+        "series_name_kana": "ワンピース",
+        "series_name_kana_1": null,
+        "series_name_kana_2": "ワンピース",
+        "series_name_kana_3": null,
+        "series_end_flg": 0,
+        "series_image_url": null,
+        "genre_datas": [
+          "コミックス",
+          "ジャンプコミックス"
+        ]
+      },
+      "family_datas": [
+        {
+          "family_id": 3,
+          "family_name": "ONE PIECE"
+        }
+      ],
+      "shop_datas": [
+        {
+          "shop_id": 4,
+          "shop_name": "Amazon",
+          "shop_image_url": "https://dosbg3xlm0x1t.cloudfront.net/images/shops/4.png",
+          "shop_url": "http://www.amazon.co.jp/gp/product/4088851307?ie=UTF8&amp;tag=booknavi0e-22&amp;linkCode=as2&amp;camp=247&amp;creative=1211&amp;creativeASIN=4088851307"
+        },
+        {
+          "shop_id": 5,
+          "shop_name": "楽天Books",
+          "shop_image_url": "https://dosbg3xlm0x1t.cloudfront.net/images/shops/5.png",
+          "shop_url": "https://pt.afl.rakuten.co.jp/c/0bd9b137.4d341619/?url=https%3A%2F%2Fbooks.rakuten.co.jp%2Frdt%2Fitem%2F%3Fsid%3D213310%26sno%3DISBN%3a9784088851303"
+        },
+        {
+          "shop_id": 10,
+          "shop_name": "漫画全巻ドットコム",
+          "shop_image_url": "https://dosbg3xlm0x1t.cloudfront.net/images/shops/10.png",
+          "shop_url": "http://af-mangazenkan.com/clk.php?sid=7&isbn=9784088851303"
+        },
+        {
+          "shop_id": 3,
+          "shop_name": "セブンネットショッピング",
+          "shop_image_url": "https://dosbg3xlm0x1t.cloudfront.net/images/shops/3.png",
+          "shop_url": "http://ck.jp.ap.valuecommerce.com/servlet/referral?sid=2633665&pid=883801721&vc_url=http%3A%2F%2F7net.omni7.jp%2Fdetail_isbn%2F9784088851303"
+        },
+        {
+          "shop_id": 1021,
+          "shop_name": "アニメイト",
+          "shop_image_url": "https://dosbg3xlm0x1t.cloudfront.net/images/shops/1021.png",
+          "shop_url": "https://www.animate-onlineshop.jp/products/list.php?mode=search&smt=ONE+PIECE"
+        },
+        {
+          "shop_id": 7,
+          "shop_name": "紀伊国屋書店",
+          "shop_image_url": "https://dosbg3xlm0x1t.cloudfront.net/images/shops/7.png",
+          "shop_url": "http://ck.jp.ap.valuecommerce.com/servlet/referral?sid=2633665&pid=879030265&vc_url=http%3A%2F%2Fwww.kinokuniya.co.jp%2Ff%2Fdsg-01-9784088851303"
+        },
+        {
+          "shop_id": 1022,
+          "shop_name": "丸善ジュンク堂書店",
+          "shop_image_url": "https://dosbg3xlm0x1t.cloudfront.net/images/shops/1022.png",
+          "shop_url": "https://www.maruzenjunkudo.co.jp/products/9784088851303"
+        },
+        {
+          "shop_id": 11,
+          "shop_name": "ヨドバシカメラ",
+          "shop_image_url": "https://dosbg3xlm0x1t.cloudfront.net/images/shops/11.png",
+          "shop_url": "http://www.yodobashi.com/ec/category/index.html?word=9784088851303&extst=shueisha"
+        },
+        {
+          "shop_id": 1,
+          "shop_name": "e-hon",
+          "shop_image_url": "https://dosbg3xlm0x1t.cloudfront.net/images/shops/1.png",
+          "shop_url": "https://www.e-hon.ne.jp/bec/SA/Detail?refBook=9784088851303"
+        },
+        {
+          "shop_id": 2,
+          "shop_name": "HonyaClub",
+          "shop_image_url": "https://dosbg3xlm0x1t.cloudfront.net/images/shops/2.png",
+          "shop_url": "https://www.honyaclub.com/shop/affiliate/itemlist.aspx?isbn=9784088851303"
+        },
+        {
+          "shop_id": 9,
+          "shop_name": "HMV&BOOKS online",
+          "shop_image_url": "https://dosbg3xlm0x1t.cloudfront.net/images/shops/9.png",
+          "shop_url": "http://click.linksynergy.com/fs-bin/click?id=R8/MBVnDFc4&amp;subid=&amp;offerid=131139.1&amp;type=10&amp;tmpid=1161&amp;RD_PARM1=http%253A%252F%252Fwww.hmv.co.jp%252Fsearch%252Fsearchresults.asp%253Fisbn%253D9784088851303"
+        },
+        {
+          "shop_id": 1014,
+          "shop_name": "タワーレコード オンライン",
+          "shop_image_url": "https://dosbg3xlm0x1t.cloudfront.net/images/shops/1014.png",
+          "shop_url": "https://tower.jp/search/advanced/item/search?jan=9784088851303"
+        }
+      ],
+      "application_datas": [
+        {
+          "application_id": "38",
+          "application_name": "ゼブラック",
+          "app_contents": "ジャンプ連載漫画から異世界モノまで毎日読めるマンガアプリ！",
+          "official_link_url": "https://zebrack-comic.com/main/manga",
+          "ios_link_url": "https://apps.apple.com/jp/app/%E3%82%BC%E3%83%96%E3%83%A9%E3%83%83%E3%82%AF/id1487411615?mt=8",
+          "android_link_url": "https://play.google.com/store/apps/details?id=com.zebrack&pcampaignid=pcampaignidMKT-Other-global-all-co-prtnr-py-PartBadge-Mar2515-1",
+          "image_url": "https://dosbg3xlm0x1t.cloudfront.net/images/apps/38.png"
+        },
+        {
+          "application_id": "3",
+          "application_name": "少年ジャンプ＋",
+          "app_contents": "少年ジャンプの漫画が無料で読める本格的マンガ雑誌アプリ!! オリジナル作品も毎日更新！",
+          "official_link_url": "https://shonenjumpplus.com/app",
+          "ios_link_url": "https://itunes.apple.com/jp/app/shao-nianjanpu+/id875750302?l=ja",
+          "android_link_url": "https://play.google.com/store/apps/details?id=com.access_company.android.sh_jumpplus&hl=ja",
+          "image_url": "https://dosbg3xlm0x1t.cloudfront.net/images/apps/3.png"
+        },
+        {
+          "application_id": "40",
+          "application_name": "ジャンプTOON",
+          "app_contents": "ジャンプのタテマンガ雑誌アプリ‼︎ オリジナル作品からメディア化で話題の人気作品を毎日更新！",
+          "official_link_url": "https://jumptoon.com/",
+          "ios_link_url": "https://apps.apple.com/jp/app/id6449017005",
+          "android_link_url": "https://play.google.com/store/apps/details?id=com.jumptoon",
+          "image_url": "https://dosbg3xlm0x1t.cloudfront.net/images/apps/40.png"
+        },
+        {
+          "application_id": "7",
+          "application_name": "ジャンプルーキー！",
+          "app_contents": "インディーズ作品が40000話以上！ジャンル完全自由！誰でも連載できる！",
+          "official_link_url": "https://rookie.shonenjump.com/app",
+          "ios_link_url": "https://itunes.apple.com/us/app/%E3%82%B8%E3%83%A3%E3%83%B3%E3%83%97%E3%83%AB%E3%83%BC%E3%82%AD%E3%83%BC/id1370355784?l=ja",
+          "android_link_url": "https://play.google.com/store/apps/details?id=com.shonenjump.rookie",
+          "image_url": "https://dosbg3xlm0x1t.cloudfront.net/images/apps/7.png"
+        },
+        {
+          "application_id": "6",
+          "application_name": "ジャンプPAINT",
+          "app_contents": "ジャンプ公式のマンガ制作ソフト・アプリ!!\r\nペンもトーンもフォントも全部無料!!",
+          "official_link_url": "https://medibangpaint.com/jumppaint/",
+          "ios_link_url": "https://itunes.apple.com/jp/app/jump-paint-by-medibang/id1230936997",
+          "android_link_url": "https://play.google.com/store/apps/details?id=com.medibang.android.jumppaint",
+          "image_url": "https://dosbg3xlm0x1t.cloudfront.net/images/apps/6.png"
+        }
+      ]
+    }
+  ]
+}

@@ -166,9 +166,13 @@
 }
 
 .st-page-flip-container .page {
-  background-color: #12131a;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.6);
+  background-color: #000000 !important;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
   overflow: hidden;
+}
+
+.st-page-flip-container [class*="stf__"] {
+  background-color: #000000 !important;
 }
 
 /* Smooth view transition */

@@ -20,9 +20,19 @@ except ImportError:
     PIL_AVAILABLE = False
 
 try:
-    from tools.comic_info import read_comic_info_from_cbz, parse_comic_info
+    from tools.comic_info import (
+        read_comic_info_from_cbz,
+        parse_comic_info,
+        format_volume_display_title,
+        format_chapter_display_title,
+    )
 except ImportError:
-    from comic_info import read_comic_info_from_cbz, parse_comic_info
+    from comic_info import (
+        read_comic_info_from_cbz,
+        parse_comic_info,
+        format_volume_display_title,
+        format_chapter_display_title,
+    )
 
 
 # ============================================================================
@@ -305,9 +315,46 @@ def get_saga_for_volume(vol_num: int) -> Dict[str, Any]:
     return CANON_SAGAS[-1]  # Default to Final Saga for modern high volumes
 
 
+_CANON_VOLUME_TITLES_CACHE: Optional[Dict[int, Dict[str, Any]]] = None
+
+def load_canon_volume_titles() -> Dict[int, Dict[str, Any]]:
+    global _CANON_VOLUME_TITLES_CACHE
+    if _CANON_VOLUME_TITLES_CACHE is None:
+        _CANON_VOLUME_TITLES_CACHE = {}
+        paths = [
+            Path(__file__).resolve().parent / "canon_volume_titles.json",
+            Path(__file__).resolve().parent.parent / "frontend" / "public" / "comics" / "canon_volume_titles.json",
+        ]
+        for p in paths:
+            if p.exists():
+                try:
+                    with open(p, "r", encoding="utf-8") as f:
+                        raw = json.load(f)
+                        _CANON_VOLUME_TITLES_CACHE = {int(k): v for k, v in raw.items()}
+                        break
+                except Exception:
+                    pass
+    return _CANON_VOLUME_TITLES_CACHE or {}
+
+
 def get_volume_meta(vol_num: int) -> Dict[str, Any]:
     """Retrieves canon metadata or calculates sensible canon defaults."""
-    if vol_num in CANON_VOLUMES_DATA:
+    v_cache = load_canon_volume_titles()
+    if vol_num in v_cache:
+        v_info = v_cache[vol_num]
+        info = {
+            "title": v_info.get("title") or f"Volume {vol_num}",
+            "japaneseTitle": v_info.get("japaneseTitle", f"巻{vol_num}"),
+            "arc": CANON_VOLUMES_DATA.get(vol_num, {}).get("arc") or f"Volume {vol_num}",
+            "ch_start": v_info.get("ch_start") or max(1, (vol_num - 1) * 10 + 1),
+            "ch_end": v_info.get("ch_end") or (v_info.get("ch_start") + 9 if v_info.get("ch_start") else vol_num * 10),
+            "pages": CANON_VOLUMES_DATA.get(vol_num, {}).get("pages", 200),
+            "color": CANON_VOLUMES_DATA.get(vol_num, {}).get("color", "#a8c7fa"),
+            "summary": v_info.get("summary") or CANON_VOLUMES_DATA.get(vol_num, {}).get("summary", ""),
+            "releaseDate": v_info.get("originalReleaseDate") or v_info.get("licensedReleaseDate") or "2024-01-01",
+            "isbn": v_info.get("licensedISBN") or v_info.get("originalISBN") or "",
+        }
+    elif vol_num in CANON_VOLUMES_DATA:
         info = CANON_VOLUMES_DATA[vol_num].copy()
     else:
         # Calculate approximate canon chapter range (approx ~10-11 chapters per volume)
@@ -327,6 +374,20 @@ def get_volume_meta(vol_num: int) -> Dict[str, Any]:
 
     saga = get_saga_for_volume(vol_num)
     cover_file = f"cover-v{vol_num:02d}.jpg"
+    raw_title = info.get("title", "").strip()
+    clean_title = raw_title.replace(":", " - ").replace("/", "-").replace("\\", "-")
+    clean_title = re.sub(r'[*?"<>|]', "", clean_title).strip()
+    cbz_default_name = f"Volume {vol_num} - {clean_title}.cbz" if clean_title else f"Volume {vol_num}.cbz"
+
+    # Check if back cover exists on disk
+    script_dir = Path(__file__).resolve().parent
+    public_covers = script_dir.parent / "frontend" / "public" / "comics" / "covers"
+    back_cover_url = None
+    if (public_covers / f"back-cover-v{vol_num:02d}.jpg").exists():
+        back_cover_url = f"comics/covers/back-cover-v{vol_num:02d}.jpg"
+    elif (public_covers / f"back-cover-v{vol_num:02d}.webp").exists():
+        back_cover_url = f"comics/covers/back-cover-v{vol_num:02d}.webp"
+
     return {
         "id": f"one-piece-v{vol_num:02d}",
         "volumeNumber": vol_num,
@@ -339,10 +400,11 @@ def get_volume_meta(vol_num: int) -> Dict[str, Any]:
         "chapterEnd": info.get("ch_end", 1),
         "pageCount": info.get("pages", 200),
         "coverUrl": f"comics/covers/{cover_file}",
+        "backCoverUrl": back_cover_url,
         "spineColor": info.get("color", saga["themeColor"]),
         "releaseDate": info.get("releaseDate", ""),
         "summary": info.get("summary", ""),
-        "cbzFile": f"One Piece - v{vol_num:02d} (c{info.get('ch_start', 1):03d}-{info.get('ch_end', 1):03d}).cbz",
+        "cbzFile": cbz_default_name,
         "available": False,
     }
 
@@ -366,6 +428,23 @@ def scan_and_index_volumes(
     # Master list of volume entries mapped by volume number
     catalog_volumes: Dict[int, Dict[str, Any]] = {}
 
+    # Load existing manifest to preserve remote cbzUrls and existing chapter TOCs
+    existing_remote_urls: Dict[int, str] = {}
+    existing_tocs: Dict[int, List[Dict[str, Any]]] = {}
+    if output_json_path and Path(output_json_path).exists():
+        try:
+            with open(output_json_path, "r", encoding="utf-8") as f_ex:
+                ex_data = json.load(f_ex)
+                for ex_v in ex_data.get("volumes", []):
+                    vnum = ex_v.get("volumeNumber")
+                    if vnum is not None:
+                        if ex_v.get("cbzUrl"):
+                            existing_remote_urls[int(vnum)] = ex_v["cbzUrl"]
+                        if ex_v.get("chapters"):
+                            existing_tocs[int(vnum)] = ex_v["chapters"]
+        except Exception as e:
+            print(f"Notice: Could not load existing manifest for url preservation: {e}")
+
     # 1. Populate all canon volumes covering all sagas.
     # Check covers_dir for the highest available cover number (at least 108, up to 113)
     max_vol = 108
@@ -384,11 +463,19 @@ def scan_and_index_volumes(
             meta["coverUrl"] = f"comics/covers/cover-v{v_num:02d}.jpg"
         elif (covers_dir / f"cover-v{v_num:02d}.webp").exists():
             meta["coverUrl"] = f"comics/covers/cover-v{v_num:02d}.webp"
+
+        # Verify back cover file existence
+        if (covers_dir / f"back-cover-v{v_num:02d}.jpg").exists():
+            meta["backCoverUrl"] = f"comics/covers/back-cover-v{v_num:02d}.jpg"
+        elif (covers_dir / f"back-cover-v{v_num:02d}.webp").exists():
+            meta["backCoverUrl"] = f"comics/covers/back-cover-v{v_num:02d}.webp"
+        else:
+            meta["backCoverUrl"] = None
         catalog_volumes[v_num] = meta
 
     # 2. Inspect physical files in comics_dir
     volume_pattern = re.compile(
-        r"(?:One\s*Piece.*?v(?:ol)?\.?\s*(\d+)|v(?:ol)?\.?\s*(\d+))", re.IGNORECASE
+        r"(?:^Volume\s*(\d+)|One\s*Piece.*?v(?:ol)?\.?\s*(\d+)|v(?:ol)?\.?\s*(\d+))", re.IGNORECASE
     )
 
     cbz_files = list(comics_path.glob("*.cbz")) + list(comics_path.glob("*.zip"))
@@ -396,38 +483,40 @@ def scan_and_index_volumes(
     cbz_files.sort(key=lambda p: (1 if "English" in p.name else 0, p.name))
     for file_path in cbz_files:
         vol_num: Optional[int] = None
-        match = volume_pattern.search(file_path.stem)
-        if match:
-            vol_num = int(match.group(1) or match.group(2))
+        is_chapter_file = bool(re.match(r"^Chapter\s+\d+", file_path.name, re.IGNORECASE))
+        is_real_volume_cbz = False
+
+        if not is_chapter_file:
+            match = volume_pattern.search(file_path.stem)
+            if match:
+                vol_num = int(match.group(1) or match.group(2) or match.group(3))
+                is_real_volume_cbz = True
 
         # Check ComicInfo.xml inside CBZ
         comic_info = read_comic_info_from_cbz(str(file_path))
-        if comic_info:
+        if comic_info and not is_real_volume_cbz and not is_chapter_file:
             if "Volume" in comic_info and comic_info["Volume"].isdigit():
                 vol_num = int(comic_info["Volume"])
+                is_real_volume_cbz = True
 
         if vol_num is None:
-            ch_match = re.search(r"(?:chapter|c)\s*(\d+)", file_path.stem, re.IGNORECASE)
-            if ch_match:
-                ch_val = int(ch_match.group(1))
-                if ch_val >= 1100:
-                    vol_num = 112
-                else:
-                    vol_num = max(1, (ch_val - 1) // 10 + 1)
-            else:
-                vol_num = 1
+            continue
 
         base_meta = catalog_volumes.get(vol_num, get_volume_meta(vol_num))
-        base_meta["cbzFile"] = file_path.name
-        base_meta["available"] = True
-        base_meta["fileSize"] = file_path.stat().st_size
+        if is_real_volume_cbz or not base_meta.get("isRealVolume"):
+            base_meta["cbzFile"] = file_path.name
+            base_meta["available"] = True
+            base_meta["fileSize"] = file_path.stat().st_size
+            if is_real_volume_cbz:
+                base_meta["isRealVolume"] = True
 
-        if comic_info:
-            if comic_info.get("Title"):
-                clean_title = comic_info["Title"]
-                if clean_title.startswith("Chapter ") and ": Chapter " in clean_title:
-                    clean_title = clean_title.split(": ", 1)[1]
-                base_meta["title"] = clean_title
+
+        if comic_info and comic_info.get("Title"):
+            raw_title = comic_info["Title"]
+            if is_real_volume_cbz:
+                base_meta["title"] = format_volume_display_title(vol_num, raw_title)
+            else:
+                base_meta["title"] = format_chapter_display_title(vol_num, raw_title)
             if comic_info.get("Summary"):
                 base_meta["summary"] = comic_info["Summary"]
             if comic_info.get("StartChapter") and comic_info["StartChapter"].isdigit():
@@ -437,10 +526,11 @@ def scan_and_index_volumes(
             if comic_info.get("PageCount") and comic_info["PageCount"].isdigit():
                 base_meta["pageCount"] = int(comic_info["PageCount"])
         else:
-            # Fallback title from filename if pattern is Chapter XXX - Subtitle
-            file_title_match = re.match(r"Chapter\s+(\d+)\s*[-_:]\s*(.+)", file_path.stem, re.IGNORECASE)
-            if file_title_match:
-                base_meta["title"] = f"Chapter {file_title_match.group(1)}: {file_title_match.group(2).strip()}"
+            # Fallback title from filename
+            if is_real_volume_cbz:
+                base_meta["title"] = format_volume_display_title(vol_num, file_path.stem)
+            else:
+                base_meta["title"] = format_chapter_display_title(vol_num, file_path.stem)
 
         # Retain official Viz cover if present; otherwise extract first page
         if (covers_dir / f"cover-v{vol_num:02d}.jpg").exists():
@@ -468,6 +558,32 @@ def scan_and_index_volumes(
                             base_meta["coverUrl"] = f"comics/covers/cover-v{vol_num:02d}.webp"
                 except Exception as e:
                     print(f"Notice: Could not extract cover for {file_path.name}: {e}")
+
+        # Check for back cover
+        if (covers_dir / f"back-cover-v{vol_num:02d}.jpg").exists():
+            base_meta["backCoverUrl"] = f"comics/covers/back-cover-v{vol_num:02d}.jpg"
+        elif (covers_dir / f"back-cover-v{vol_num:02d}.webp").exists():
+            base_meta["backCoverUrl"] = f"comics/covers/back-cover-v{vol_num:02d}.webp"
+        else:
+            base_meta["backCoverUrl"] = None
+
+        # Check if archive has toc.json
+        if is_real_volume_cbz:
+            try:
+                import zipfile
+                with zipfile.ZipFile(file_path, "r") as z_toc:
+                    if "toc.json" in z_toc.namelist():
+                        toc_content = json.loads(z_toc.read("toc.json").decode("utf-8"))
+                        if toc_content.get("chapters"):
+                            base_meta["chapters"] = toc_content["chapters"]
+            except Exception:
+                pass
+
+        # Restore preserved remote cbzUrl and chapters if not set
+        if vol_num in existing_remote_urls and not base_meta.get("cbzUrl"):
+            base_meta["cbzUrl"] = existing_remote_urls[vol_num]
+        if vol_num in existing_tocs and not base_meta.get("chapters"):
+            base_meta["chapters"] = existing_tocs[vol_num]
 
         catalog_volumes[vol_num] = base_meta
 

@@ -26,10 +26,10 @@ except ImportError:
     Response = None
 
 try:
-    from tools.comic_info import build_comic_info_xml
+    from tools.comic_info import build_comic_info_xml, format_chapter_filename, format_chapter_display_title, clean_chapter_sub_title
     from tools.catalog_indexer import scan_and_index_volumes
 except ImportError:
-    from comic_info import build_comic_info_xml
+    from comic_info import build_comic_info_xml, format_chapter_filename, format_chapter_display_title, clean_chapter_sub_title
     from catalog_indexer import scan_and_index_volumes
 
 
@@ -340,27 +340,43 @@ def download_mangaplus_chapter(
 
     log_callback(f"Unpacking {total_pages} decrypted pages...")
 
-    # Determine destination CBZ filename: Chapter {number} - {sub_title}.cbz
-    # (Note: Windows filesystems forbid colons, so ':' in titles is safely mapped to ' - ' in filenames)
-    if sub_title:
-        clean_sub = sub_title.replace(":", " - ").replace("/", "-").replace("\\", "-")
-        clean_sub = re.sub(r'[*?"<>|]', "", clean_sub).strip()
-        cbz_filename = f"Chapter {chapter_number} - {clean_sub}.cbz"
-    else:
-        cbz_filename = f"Chapter {chapter_number}.cbz"
+    # Determine destination CBZ filename (guaranteeing no duplicate Chapter X - Chapter X prefixes)
+    cbz_filename = format_chapter_filename(chapter_number, sub_title)
     cbz_dest = out_path / cbz_filename
 
     # Build ComicRack-compliant ComicInfo.xml
-    title_text = f"Chapter {chapter_number}: {sub_title}" if sub_title else f"Chapter {chapter_number}"
+    title_text = format_chapter_display_title(chapter_number, sub_title)
+    clean_summary = clean_chapter_sub_title(sub_title, chapter_number)
+
+    # Resolve accurate volume number from canonical volume catalog
+    try:
+        from tools.catalog_indexer import load_canon_volume_titles
+    except ImportError:
+        try:
+            from catalog_indexer import load_canon_volume_titles
+        except ImportError:
+            load_canon_volume_titles = lambda: {}
+    canon_map = load_canon_volume_titles()
+    resolved_vol = max(1, (chapter_number - 1) // 10 + 1)
+    for v_key, v_data in canon_map.items():
+        st_ch = v_data.get("ch_start")
+        en_ch = v_data.get("ch_end")
+        if st_ch is not None and en_ch is not None and st_ch <= chapter_number <= en_ch:
+            resolved_vol = int(v_key)
+            break
+        elif st_ch is not None and en_ch is None and chapter_number >= st_ch:
+            resolved_vol = int(v_key)
+            break
+
     comic_info_xml = build_comic_info_xml(
         series=series_name,
-        volume=112 if "one piece" in series_name.lower() and chapter_number >= 1100 else 1,
+        volume=resolved_vol if "one piece" in series_name.lower() else 1,
         number=chapter_number,
         ch_start=chapter_number,
         ch_end=chapter_number,
         count=total_pages,
         title=title_text,
-        summary=sub_title or f"Chapter {chapter_number} [{lang_label}] from MangaPlus.",
+        summary=clean_summary or f"Chapter {chapter_number} [{lang_label}] from MangaPlus.",
         language_iso=lang_iso,
     )
 

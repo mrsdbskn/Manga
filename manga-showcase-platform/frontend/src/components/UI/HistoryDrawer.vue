@@ -25,7 +25,7 @@
           </div>
           <div>
             <h3 class="text-base font-bold text-white font-outfit">Reading History</h3>
-            <p class="text-xs text-slate-400">{{ recentHistory.length }} volumes logged</p>
+            <p class="text-xs text-slate-400">{{ historySummary }}</p>
           </div>
         </div>
 
@@ -33,6 +33,7 @@
           type="button"
           @click="close"
           class="p-2 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition-colors md-state-layer"
+          title="Close drawer"
         >
           <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M18 6 6 18M6 6l12 12" />
@@ -50,40 +51,84 @@
             </svg>
           </div>
           <p class="text-sm font-semibold text-slate-300">No reading history yet</p>
-          <p class="text-xs text-slate-500 mt-1">Volumes you read will be saved here automatically.</p>
+          <p class="text-xs text-slate-500 mt-1">Chapters and volumes you read will be saved here automatically.</p>
         </div>
 
         <!-- History Items -->
         <div 
           v-for="record in recentHistory" 
           :key="record.volumeId"
-          class="glass-card rounded-2xl p-3.5 flex flex-col gap-2.5 border border-white/5 hover:border-white/15 transition-all"
+          class="glass-card rounded-2xl p-3.5 flex flex-col gap-2.5 border border-white/5 hover:border-white/15 transition-all group relative"
         >
-          <div class="flex items-center gap-3">
-            <!-- Cover / Icon -->
-            <div class="w-12 h-16 rounded-md bg-[#1e2235] overflow-hidden shrink-0 border border-white/10 flex items-center justify-center">
+          <!-- Individual Delete Record Button (appears on card) -->
+          <button 
+            type="button"
+            @click.stop="deleteRecord(record.volumeId)"
+            class="absolute top-3 right-3 p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+            title="Remove from history"
+          >
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+          </button>
+
+          <div class="flex items-center gap-3 pr-7">
+            <!-- Cover / Badge Icon -->
+            <div 
+              class="w-12 h-16 rounded-md overflow-hidden shrink-0 border flex flex-col items-center justify-center relative"
+              :class="[
+                isChapter(record) 
+                  ? 'bg-amber-950/20 border-amber-500/30' 
+                  : 'bg-sky-950/20 border-sky-500/30'
+              ]"
+            >
+              <!-- Cover image if available -->
               <img 
-                v-if="getVolume(record.volumeId)?.coverUrl"
-                :src="getVolume(record.volumeId).coverUrl" 
+                v-if="getItemCover(record)"
+                :src="getItemCover(record)" 
                 class="w-full h-full object-cover"
                 @error="$event.target.style.display='none'"
               />
-              <span v-else class="text-[10px] font-bold text-sky-400">VOL</span>
+              <!-- Fallback Badge -->
+              <div class="flex flex-col items-center justify-center p-1 text-center">
+                <span 
+                  class="text-[11px] font-extrabold tracking-wider font-mono"
+                  :class="isChapter(record) ? 'text-amber-400' : 'text-sky-400'"
+                >
+                  {{ isChapter(record) ? 'CH' : 'VOL' }}
+                </span>
+                <span 
+                  v-if="getItemMeta(record).number"
+                  class="text-[9px] font-mono text-slate-400"
+                >
+                  {{ getItemMeta(record).number }}
+                </span>
+              </div>
             </div>
 
             <!-- Details -->
             <div class="flex-1 min-w-0">
-              <div class="flex items-center justify-between">
-                <h4 class="text-xs font-bold text-white truncate">
-                  {{ getVolume(record.volumeId)?.title || record.volumeId }}
+              <div class="flex items-center justify-between gap-1">
+                <h4 class="text-xs font-bold text-white truncate" :title="getItemTitle(record)">
+                  {{ getItemTitle(record) }}
                 </h4>
-                <span class="text-[10px] font-mono text-slate-400">
-                  {{ formatTime(record.updatedAt) }}
+              </div>
+
+              <div class="flex items-center gap-2 mt-0.5">
+                <span 
+                  class="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.2 rounded"
+                  :class="isChapter(record) ? 'bg-amber-500/10 text-amber-300' : 'bg-sky-500/10 text-sky-300'"
+                >
+                  {{ isChapter(record) ? 'Chapter' : 'Volume' }}
+                </span>
+                <span class="text-[11px] text-slate-400">
+                  Page {{ record.lastPage }} of {{ record.totalPages }}
                 </span>
               </div>
 
-              <p class="text-[11px] text-slate-400 mt-0.5">
-                Page {{ record.lastPage }} of {{ record.totalPages }}
+              <!-- Time ago -->
+              <p class="text-[10px] font-mono text-slate-500 mt-1">
+                {{ formatTime(record.updatedAt) }}
               </p>
 
               <!-- Progress bar -->
@@ -105,16 +150,21 @@
             </span>
           </div>
 
-          <!-- Resume Button -->
+          <!-- Action Button: Resume or Re-open -->
           <button 
             type="button"
             @click="resumeReading(record)"
-            class="w-full py-1.5 rounded-xl bg-white/[0.06] hover:bg-sky-500/20 text-sky-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+            class="w-full py-1.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+            :class="[
+              canDirectlyResume(record)
+                ? 'bg-white/[0.06] hover:bg-sky-500/20 text-sky-300'
+                : 'bg-white/[0.04] hover:bg-white/[0.1] text-slate-300'
+            ]"
           >
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
               <path d="M5 3l14 9-14 9V3z" />
             </svg>
-            <span>Resume from Page {{ record.lastPage }}</span>
+            <span>{{ getResumeButtonText(record) }}</span>
           </button>
         </div>
       </div>
@@ -137,6 +187,7 @@
 import { computed } from 'vue';
 import { useLibraryStore } from '../../stores/library.js';
 import { useProgressStore } from '../../stores/progress.js';
+import { parseMangaMetadata } from '../../utils/mangaTitle.js';
 import ProgressBarMD3 from './ProgressBarMD3.vue';
 
 const props = defineProps({
@@ -155,8 +206,66 @@ const recentHistory = computed(() => {
   return progressStore.recentHistory;
 });
 
+const historySummary = computed(() => {
+  const list = recentHistory.value;
+  if (list.length === 0) return '0 items logged';
+  
+  let chapters = 0;
+  let volumes = 0;
+  list.forEach(r => {
+    if (isChapter(r)) chapters++;
+    else volumes++;
+  });
+
+  const parts = [];
+  if (chapters > 0) parts.push(`${chapters} chapter${chapters > 1 ? 's' : ''}`);
+  if (volumes > 0) parts.push(`${volumes} volume${volumes > 1 ? 's' : ''}`);
+  return `${parts.join(', ')} logged`;
+});
+
 function getVolume(volumeId) {
   return libraryStore.volumes.find(v => v.id === volumeId);
+}
+
+function getItemMeta(record) {
+  const vol = getVolume(record.volumeId);
+  const raw = record.title || vol?.title || record.fileName || record.volumeId;
+  return parseMangaMetadata(raw, null, record.totalPages);
+}
+
+function isChapter(record) {
+  if (record.type === 'chapter') return true;
+  if (record.type === 'volume') return false;
+  return getItemMeta(record).type === 'chapter';
+}
+
+function getItemTitle(record) {
+  // If record already has a clean title, return it
+  if (record.title && !record.title.startsWith('local-')) {
+    return record.title;
+  }
+  const vol = getVolume(record.volumeId);
+  if (vol && vol.title) return vol.title;
+  
+  return getItemMeta(record).title;
+}
+
+function getItemCover(record) {
+  const vol = getVolume(record.volumeId);
+  if (vol?.coverUrl) return vol.coverUrl;
+  return record.coverUrl || null;
+}
+
+function canDirectlyResume(record) {
+  if (getVolume(record.volumeId)) return true;
+  return libraryStore.activeVolume && libraryStore.activeVolume.id === record.volumeId;
+}
+
+function getResumeButtonText(record) {
+  if (canDirectlyResume(record)) {
+    return `Resume from Page ${record.lastPage}`;
+  }
+  return `Re-open File (Page ${record.lastPage})`;
 }
 
 function close() {
@@ -168,7 +277,23 @@ function resumeReading(record) {
   if (vol) {
     libraryStore.openReader(vol);
     close();
+    return;
   }
+
+  // If it is the current active local volume
+  if (libraryStore.activeVolume && libraryStore.activeVolume.id === record.volumeId) {
+    libraryStore.isReading = true;
+    close();
+    return;
+  }
+
+  // If local file needs to be re-opened from disk
+  libraryStore.toggleLocalDropzone();
+  close();
+}
+
+function deleteRecord(volumeId) {
+  progressStore.deleteRecord(volumeId);
 }
 
 function confirmClearHistory() {

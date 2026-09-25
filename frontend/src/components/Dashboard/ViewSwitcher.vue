@@ -43,6 +43,26 @@
       </svg>
       <span>List</span>
     </button>
+
+    <!-- 3D Shelf Mode Button -->
+    <button
+      type="button"
+      @click="setMode('shelf')"
+      :class="[
+        'flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 md-state-layer',
+        modelValue === 'shelf'
+          ? 'bg-amber-400/20 text-amber-300 shadow-sm border border-amber-400/30'
+          : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
+      ]"
+      title="3D Manga Bookshelf (Spine & Shelf View)"
+    >
+      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/>
+        <path d="M6 6h10"/>
+        <path d="M6 10h10"/>
+      </svg>
+      <span>3D Shelf</span>
+    </button>
   </div>
 </template>
 

@@ -32,11 +32,15 @@ env/
 venv/
 ENV/
 .venv/
+*.cache.json
+.*_cache.json
+
 
 # Environment and IDE
 .env
 .env.local
 .env.*.local
+*r2_config.json
 .vscode/
 .idea/
 *.suo
