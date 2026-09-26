@@ -211,8 +211,9 @@
       "releaseDate": "December 24, 1997",
       "summary": "Seven-year-old Monkey D. Luffy tries to join \"Red-Haired\" Shanks' pirate crew, but is rejected as too young. He accidentally eats a devil fruit which causes his body to gain the properties of rubber, but makes him unable to swim. After an ordeal with mountain bandits, Luffy abandons his plan to join Shanks' crew; instead, he vows to surpass Shanks, build up a crew of his own and become the next King of the Pirates. Ten years later Luffy sets out to sea, frees the young Coby from a slave's life in Alvida's pirate crew and saves three-sword-wielding Pirate Hunter Roronoa Zoro from being executed by the Navy. With Zoro Luffy's first crewman, they set sail for the Grand Line (the sea where the One Piece – the treasure of the last king of the pirates – is supposedly hidden), and meet thief (and expert navigator) Nami.",
       "cbzFile": "Volume 1 - Romance Dawn.cbz",
-      "available": false,
-      "spineUrl": "comics/covers/spine-v01.webp"
+      "available": true,
+      "spineUrl": "comics/covers/spine-v01.webp",
+      "cbzUrl": "https://pub-7eec745686a84d72ad6f6712fe54a988.r2.dev/Volume%201%20-%20Romance%20Dawn.cbz"
     },
     {
       "id": "one-piece-v02",
@@ -2494,5 +2495,6 @@
       "available": false,
       "spineUrl": "comics/covers/spine-v115.webp"
     }
-  ]
+  ],
+  "r2PublicUrl": "https://pub-7eec745686a84d72ad6f6712fe54a988.r2.dev"
 }

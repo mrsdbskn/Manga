@@ -135,6 +135,14 @@ except ImportError:
         sync_comics_folder_to_r2 = None
         upload_file_to_r2 = None
 
+try:
+    from tools.sync_r2_catalog import sync_catalog
+except ImportError:
+    try:
+        from sync_r2_catalog import sync_catalog
+    except ImportError:
+        sync_catalog = None
+
 
 
 def natural_sort_key(s: str):
@@ -1479,6 +1487,41 @@ class MangaOrganizerApp:
             hover_color="#b45309",
             command=lambda: start_sync(only_vols=False)
         ).pack(side="left", fill="x", expand=True, padx=(6, 0))
+
+        # Row 3: Discover files already uploaded in Cloudflare dashboard
+        row3 = ctk.CTkFrame(dialog, fg_color="transparent")
+        row3.pack(fill="x", padx=16, pady=(10, 16))
+
+        def on_refresh_r2_catalog():
+            status_lbl.configure(text="Connecting to R2 and discovering remote files...", text_color="#38bdf8")
+            def worker():
+                try:
+                    if sync_catalog is None:
+                        raise RuntimeError("sync_r2_catalog module not found.")
+                    sync_catalog()
+                    dialog.after(0, lambda: (
+                        status_lbl.configure(text="✅ index.json refreshed with files in your R2 bucket!", text_color="#34d399"),
+                        messagebox.showinfo(
+                            "Cloudflare R2 Catalog Refreshed",
+                            "Successfully scanned your Cloudflare R2 bucket and updated index.json!\n\n"
+                            "All matching volumes are now marked as available to stream in the web app."
+                        )
+                    ))
+                except Exception as e:
+                    dialog.after(0, lambda: (
+                        status_lbl.configure(text=f"❌ Refresh failed: {e}", text_color="#f87171"),
+                        messagebox.showerror("R2 Refresh Error", str(e))
+                    ))
+            threading.Thread(target=worker, daemon=True).start()
+
+        ctk.CTkButton(
+            row3,
+            text="🔄 Discover Remote R2 Files & Update Catalog (For Dashboard Uploads)",
+            font=ctk.CTkFont(weight="bold"),
+            fg_color="#059669",
+            hover_color="#047857",
+            command=on_refresh_r2_catalog
+        ).pack(fill="x", expand=True)
 
 
 # ============================================================================

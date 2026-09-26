@@ -23,6 +23,7 @@ export const useLibraryStore = defineStore('library', {
     // Catalog loading state
     isLoadingCatalog: false,
     catalogError: null,
+    r2PublicUrl: 'https://pub-7eec745686a84d72ad6f6712fe54a988.r2.dev',
 
     // ACTIVE READING SESSION STATE
     isReading: false,
@@ -128,6 +129,9 @@ export const useLibraryStore = defineStore('library', {
         if (data.volumes && Array.isArray(data.volumes)) {
           this.volumes = data.volumes;
         }
+        if (data.r2PublicUrl) {
+          this.r2PublicUrl = data.r2PublicUrl;
+        }
         if (data.sagas && Array.isArray(data.sagas)) {
           // Merge with detailed local metadata (like badge colors)
           this.sagas = data.sagas.map(s => {
@@ -189,16 +193,37 @@ export const useLibraryStore = defineStore('library', {
           cbzUrl = volume.cbzUrl;
         } else if (volume.cbzFile && (volume.cbzFile.startsWith('http://') || volume.cbzFile.startsWith('https://'))) {
           cbzUrl = volume.cbzFile;
+        } else if (this.r2PublicUrl && volume.cbzFile) {
+          cbzUrl = `${this.r2PublicUrl.replace(/\/+$/, '')}/${encodeURIComponent(volume.cbzFile)}`;
         } else if (volume.cbzFile) {
           cbzUrl = `./comics/${encodeURIComponent(volume.cbzFile)}`;
         } else {
           cbzUrl = `./comics/One Piece - v${String(volume.volumeNumber).padStart(2, '0')} (c${String(volume.chapterStart).padStart(3, '0')}-${String(volume.chapterEnd).padStart(3, '0')}).cbz`;
         }
 
-        const result = await loadRemoteCbz(cbzUrl, (pct, status) => {
-          this.unpackProgress = pct;
-          this.unpackStatusText = status;
-        });
+        let result;
+        try {
+          result = await loadRemoteCbz(cbzUrl, (pct, status) => {
+            this.unpackProgress = pct;
+            this.unpackStatusText = status;
+          });
+        } catch (streamErr) {
+          // If initial URL failed and we haven't tried Cloudflare R2 yet, attempt R2 fallback
+          const fallbackR2 = (!cbzUrl.startsWith('http') && this.r2PublicUrl && volume.cbzFile)
+            ? `${this.r2PublicUrl.replace(/\/+$/, '')}/${encodeURIComponent(volume.cbzFile)}`
+            : null;
+
+          if (fallbackR2 && fallbackR2 !== cbzUrl) {
+            console.warn(`Initial stream failed (${streamErr.message}). Retrying via Cloudflare R2: ${fallbackR2}`);
+            this.unpackStatusText = 'Connecting to Cloudflare R2 stream...';
+            result = await loadRemoteCbz(fallbackR2, (pct, status) => {
+              this.unpackProgress = pct;
+              this.unpackStatusText = status;
+            });
+          } else {
+            throw streamErr;
+          }
+        }
 
         this.activePages = result.pages;
         this.activeComicInfo = result.comicInfo;
