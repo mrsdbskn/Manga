@@ -116,6 +116,7 @@ try:
         configure_r2_cors,
         sync_comics_folder_to_r2,
         upload_file_to_r2,
+        get_r2_storage_usage,
         StorageLimitExceededError,
     )
 except ImportError:
@@ -127,6 +128,7 @@ except ImportError:
             configure_r2_cors,
             sync_comics_folder_to_r2,
             upload_file_to_r2,
+            get_r2_storage_usage,
             StorageLimitExceededError,
         )
     except ImportError:
@@ -136,6 +138,7 @@ except ImportError:
         configure_r2_cors = None
         sync_comics_folder_to_r2 = None
         upload_file_to_r2 = None
+        get_r2_storage_usage = None
         StorageLimitExceededError = Exception
 
 try:
@@ -518,7 +521,19 @@ class MangaOrganizerApp:
             text_color="#38bdf8",
             width=140,
         )
-        self.webp_check.pack(side="left", padx=(0, 8))
+        self.webp_check.pack(side="left", padx=(0, 6))
+
+        # WebP Quality Selector
+        self.webp_quality_menu = ctk.CTkOptionMenu(
+            action_row,
+            values=["85% (Optimal)", "75% (Max Space Save)", "90% (Crisp)", "95% (Near Lossless)"],
+            width=125,
+            font=ctk.CTkFont(size=11),
+            fg_color="#1e2235",
+            button_color="#2d3246",
+        )
+        self.webp_quality_menu.set("85% (Optimal)")
+        self.webp_quality_menu.pack(side="left", padx=(0, 8))
 
         # Bundle & Push to R2 Button
         self.bundle_push_r2_btn = ctk.CTkButton(
@@ -1449,6 +1464,75 @@ class MangaOrganizerApp:
         ctk.CTkButton(row1, text="💾 Save Config", command=on_save, fg_color="#334155", width=120).pack(side="left", padx=(0, 8))
         ctk.CTkButton(row1, text="⚡ Test Connection", command=on_test, fg_color="#0284c7", hover_color="#0369a1", width=140).pack(side="left", padx=4)
         ctk.CTkButton(row1, text="🌐 Set Bucket CORS", command=on_cors, fg_color="#475569", hover_color="#334155", width=150).pack(side="left", padx=4)
+
+        # R2 Live Storage Usage Gauge Frame
+        gauge_frame = ctk.CTkFrame(dialog, fg_color="#181a26", corner_radius=10)
+        gauge_frame.pack(fill="x", padx=16, pady=(10, 4))
+
+        gauge_header = ctk.CTkFrame(gauge_frame, fg_color="transparent")
+        gauge_header.pack(fill="x", padx=12, pady=(8, 2))
+
+        ctk.CTkLabel(
+            gauge_header,
+            text="📊 R2 Free Tier Storage Gauge (10.00 GB Limit)",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="#e2e8f0"
+        ).pack(side="left")
+
+        gauge_status_lbl = ctk.CTkLabel(
+            gauge_header,
+            text="Click 'Check Storage' to calculate",
+            font=ctk.CTkFont(size=11),
+            text_color="#94a3b8"
+        )
+        gauge_status_lbl.pack(side="right")
+
+        gauge_bar = ctk.CTkProgressBar(gauge_frame, height=10, corner_radius=5)
+        gauge_bar.set(0.0)
+        gauge_bar.pack(fill="x", padx=12, pady=(4, 8))
+
+        def check_storage():
+            if get_r2_storage_usage is None:
+                gauge_status_lbl.configure(text="r2_sync module not found", text_color="#f87171")
+                return
+            vals = get_current_inputs()
+            gauge_status_lbl.configure(text="Calculating R2 usage...", text_color="#38bdf8")
+            def worker():
+                try:
+                    usage = get_r2_storage_usage(vals)
+                    pct = usage["percentage"] / 100.0
+                    used_gb = usage["total_gb"]
+                    free_gb = usage["remaining_gb"]
+                    objs = usage["object_count"]
+                    if pct > 0.90:
+                        bar_color = "#ef4444"
+                        text_col = "#f87171"
+                    elif pct > 0.70:
+                        bar_color = "#f59e0b"
+                        text_col = "#fbbf24"
+                    else:
+                        bar_color = "#10b981"
+                        text_col = "#34d399"
+
+                    msg = f"{used_gb:.2f} GB / 10.00 GB ({pct*100:.1f}%) • Free: {free_gb:.2f} GB ({objs} files)"
+                    dialog.after(0, lambda: (
+                        gauge_bar.set(pct),
+                        gauge_bar.configure(progress_color=bar_color),
+                        gauge_status_lbl.configure(text=msg, text_color=text_col)
+                    ))
+                except Exception as ex:
+                    dialog.after(0, lambda: gauge_status_lbl.configure(text=f"Error checking: {ex}", text_color="#f87171"))
+            threading.Thread(target=worker, daemon=True).start()
+
+        check_storage_btn = ctk.CTkButton(
+            row1,
+            text="📊 Check Storage",
+            command=check_storage,
+            fg_color="#059669",
+            hover_color="#047857",
+            width=130
+        )
+        check_storage_btn.pack(side="left", padx=4)
 
         # Upload Actions Row
         row2 = ctk.CTkFrame(dialog, fg_color="transparent")

@@ -303,6 +303,27 @@ def list_remote_r2_objects(config: Optional[Dict[str, str]] = None) -> Dict[str,
     return remote_objs
 
 
+def get_r2_storage_usage(config: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    """
+    Queries Cloudflare R2 bucket for current total storage usage against the 10 GB free tier.
+    """
+    cfg = config or load_r2_config()
+    remote_objs = list_remote_r2_objects(cfg)
+    total_bytes = sum(remote_objs.values())
+    total_gb = total_bytes / (1024 ** 3)
+    free_limit_gb = R2_FREE_TIER_LIMIT_BYTES / (1024 ** 3)
+    remaining_gb = max(0.0, free_limit_gb - total_gb)
+    percentage = min(100.0, (total_bytes / R2_FREE_TIER_LIMIT_BYTES) * 100)
+    return {
+        "total_bytes": total_bytes,
+        "total_gb": total_gb,
+        "free_limit_gb": free_limit_gb,
+        "remaining_gb": remaining_gb,
+        "percentage": percentage,
+        "object_count": len(remote_objs),
+    }
+
+
 def sync_comics_folder_to_r2(
     source_dir: Optional[str | Path] = None,
     comics_dir: Optional[str | Path] = None,

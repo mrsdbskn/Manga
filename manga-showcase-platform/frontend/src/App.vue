@@ -253,6 +253,20 @@
 
           <!-- Hero Action CTAs -->
           <div class="flex flex-wrap items-center justify-center lg:justify-start gap-3 mt-8">
+            <!-- Resume Reading Hero CTA if reading progress exists -->
+            <button 
+              v-if="progressStore.mostRecentVolume"
+              type="button"
+              @click="resumeLastRead"
+              class="px-6 py-3 rounded-full bg-gradient-to-r from-amber-500 via-rose-500 to-indigo-600 hover:opacity-95 text-white font-bold text-sm flex items-center gap-2 shadow-elevation-3 transition-all md-state-layer border border-amber-300/30"
+              title="Resume reading from your last active page"
+            >
+              <svg class="w-4 h-4 text-amber-200" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M5 3l14 9-14 9V3z" />
+              </svg>
+              <span>Resume Reading ({{ resumeButtonLabel }})</span>
+            </button>
+
             <button 
               type="button"
               @click="startAdventure"
@@ -381,12 +395,17 @@
         :totalPages="libraryStore.activePages.length"
         :currentMode="progressStore.readMode"
         :readingDirection="progressStore.readingDirection"
+        :spreadMode="progressStore.spreadMode"
+        :isRotated="progressStore.isRotatedLandscape"
         :isBookmarked="isCurrentPageBookmarked"
         :isVisible="isHudVisible"
         @exit="exitReader"
         @jump-page="jumpToPage"
         @update:currentMode="onReaderModeChanged"
         @update:readingDirection="onReaderDirectionChanged"
+        @toggle-spread-mode="progressStore.toggleSpreadMode()"
+        @toggle-rotation="toggleScreenRotation"
+        @toggle-zoom="onToggleZoom"
         @toggle-bookmark="toggleCurrentBookmark"
       />
 
@@ -396,9 +415,11 @@
         <FlipBookView 
           v-if="progressStore.readMode === 'flipbook'"
           ref="flipBookRef"
-          :key="`flipbook-${libraryStore.activeVolume?.id || 'vol'}-${progressStore.readingDirection}`"
+          :key="`flipbook-${libraryStore.activeVolume?.id || 'vol'}-${progressStore.readingDirection}-${progressStore.spreadMode}-${progressStore.isRotatedLandscape}`"
           :pages="libraryStore.activePages"
           :readingDirection="progressStore.readingDirection"
+          :spreadMode="progressStore.spreadMode"
+          :isRotated="progressStore.isRotatedLandscape"
           :initialPage="currentReadingPage"
           @page-change="onPageChange"
           @toggle-hud="toggleHud"
@@ -612,6 +633,73 @@ function startAdventure() {
   }
 }
 
+const resumeButtonLabel = computed(() => {
+  const rec = progressStore.mostRecentVolume;
+  if (!rec) return '';
+  if (rec.type === 'chapter') {
+    return `Ch. ${rec.lastChapter || 'Latest'} • p.${rec.lastPage}`;
+  }
+  const vol = libraryStore.volumes.find(v => v.id === rec.volumeId);
+  const volNum = vol ? vol.volumeNumber : rec.volumeId.replace(/\D/g, '');
+  return `Vol. ${volNum || 1} • p.${rec.lastPage}`;
+});
+
+async function resumeLastRead() {
+  const rec = progressStore.mostRecentVolume;
+  if (!rec) return;
+  const vol = libraryStore.volumes.find(v => v.id === rec.volumeId);
+  if (vol) {
+    await libraryStore.openReader(vol);
+  } else if (libraryStore.volumes.length > 0) {
+    startAdventure();
+  }
+}
+
+async function toggleScreenRotation() {
+  progressStore.toggleVirtualRotation();
+  if (typeof screen !== 'undefined' && screen.orientation) {
+    try {
+      if (progressStore.isRotatedLandscape && screen.orientation.lock) {
+        await screen.orientation.lock('landscape');
+      } else if (!progressStore.isRotatedLandscape && screen.orientation.unlock) {
+        await screen.orientation.unlock();
+      }
+    } catch (e) {
+      // Ignored if browser rejects orientation lock
+    }
+  }
+}
+
+function onToggleZoom() {
+  if (flipBookRef.value && flipBookRef.value.toggleZoom) {
+    flipBookRef.value.toggleZoom();
+  }
+}
+
+function onGlobalKeydown(e) {
+  if (!libraryStore.isReading) return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+  const key = e.key.toLowerCase();
+  if (key === 'd') {
+    progressStore.toggleSpreadMode();
+  } else if (key === 'o') {
+    toggleScreenRotation();
+  } else if (key === 'z') {
+    onToggleZoom();
+  } else if (key === 'm') {
+    progressStore.setReadMode(progressStore.readMode === 'flipbook' ? 'webtoon' : 'flipbook');
+  } else if (key === 'r') {
+    progressStore.setReadingDirection(progressStore.readingDirection === 'rtl' ? 'ltr' : 'rtl');
+  } else if (key === 'b') {
+    toggleCurrentBookmark();
+  } else if (key === 'h') {
+    toggleHud();
+  } else if (e.key === 'Escape') {
+    exitReader();
+  }
+}
+
 const activeSagaColor = computed(() => {
   if (!libraryStore.activeSagaFilter || libraryStore.activeSagaFilter === 'all') {
     return '#38bdf8';
@@ -630,5 +718,10 @@ const ambientParticles = Array.from({ length: 16 }, (_, i) => ({
 onMounted(() => {
   libraryStore.loadCatalog();
   libraryStore.refreshStorageInfo();
+  window.addEventListener('keydown', onGlobalKeydown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', onGlobalKeydown);
 });
 </script>

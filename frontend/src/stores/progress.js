@@ -9,6 +9,8 @@ import { defineStore } from 'pinia';
 const STORAGE_KEY = 'manga_showcase_reading_progress';
 const PREF_KEY = 'manga_showcase_reader_pref';
 const DIRECTION_KEY = 'manga_showcase_reading_direction';
+const SPREAD_KEY = 'manga_showcase_spread_mode';
+const ROTATION_KEY = 'manga_showcase_screen_rotation';
 
 export const useProgressStore = defineStore('progress', {
   state: () => ({
@@ -18,6 +20,10 @@ export const useProgressStore = defineStore('progress', {
     readMode: localStorage.getItem(PREF_KEY) || 'flipbook',
     // Reading direction: 'rtl' (Authentic Manga Right-to-Left, default) | 'ltr' (Western Left-to-Right)
     readingDirection: localStorage.getItem(DIRECTION_KEY) || 'rtl',
+    // Spread mode: 'dual' (always show both facing pages side-by-side) | 'single' (1 page)
+    spreadMode: localStorage.getItem(SPREAD_KEY) || 'dual',
+    // Virtual 90° landscape rotation mode for phone reading
+    isRotatedLandscape: localStorage.getItem(ROTATION_KEY) === 'true',
   }),
 
   getters: {
@@ -26,6 +32,14 @@ export const useProgressStore = defineStore('progress', {
      */
     recentHistory: (state) => {
       return Object.values(state.records).sort((a, b) => b.updatedAt - a.updatedAt);
+    },
+
+    /**
+     * Returns the single most recently read volume record for quick resume.
+     */
+    mostRecentVolume: (state) => {
+      const history = Object.values(state.records).sort((a, b) => b.updatedAt - a.updatedAt);
+      return history.length > 0 ? history[0] : null;
     },
 
     /**
@@ -146,6 +160,26 @@ export const useProgressStore = defineStore('progress', {
     setReadingDirection(dir) {
       this.readingDirection = dir === 'ltr' ? 'ltr' : 'rtl';
       localStorage.setItem(DIRECTION_KEY, this.readingDirection);
+    },
+
+    /**
+     * Sets spread mode preference ('dual' or 'single').
+     */
+    setSpreadMode(mode) {
+      this.spreadMode = mode === 'single' ? 'single' : 'dual';
+      localStorage.setItem(SPREAD_KEY, this.spreadMode);
+    },
+
+    toggleSpreadMode() {
+      this.setSpreadMode(this.spreadMode === 'dual' ? 'single' : 'dual');
+    },
+
+    /**
+     * Toggles virtual 90° landscape rotation for mobile phone reading.
+     */
+    toggleVirtualRotation() {
+      this.isRotatedLandscape = !this.isRotatedLandscape;
+      localStorage.setItem(ROTATION_KEY, this.isRotatedLandscape ? 'true' : 'false');
     },
 
     /**

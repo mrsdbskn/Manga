@@ -251,6 +251,69 @@
             </span>
           </button>
 
+          <!-- Dual Spread vs Single Page Toggle (FlipBook Mode) -->
+          <button 
+            v-if="currentMode === 'flipbook'"
+            type="button"
+            @click="$emit('toggle-spread-mode')"
+            :class="[
+              'px-2.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all md-state-layer border',
+              spreadMode === 'dual'
+                ? 'bg-sky-500/20 text-sky-300 border-sky-500/30'
+                : 'bg-white/10 text-slate-300 border-white/10'
+            ]"
+            :title="spreadMode === 'dual' ? 'Spread Layout: Dual Facing Pages (Both visible). Click for Single Page' : 'Spread Layout: Single Page. Click for Dual Facing Pages'"
+          >
+            <span>📖</span>
+            <span class="font-bold hidden sm:inline">{{ spreadMode === 'dual' ? 'Both Pages' : '1-Page' }}</span>
+            <span class="font-bold sm:hidden">{{ spreadMode === 'dual' ? '2P' : '1P' }}</span>
+          </button>
+
+          <!-- Screen Orientation / Virtual 90° Landscape Rotation Toggle -->
+          <button 
+            v-if="currentMode === 'flipbook'"
+            type="button"
+            @click="$emit('toggle-rotation')"
+            :class="[
+              'p-2 rounded-full transition-colors md-state-layer border',
+              isRotated
+                ? 'bg-amber-400/20 text-amber-300 border-amber-400/30'
+                : 'text-slate-400 hover:text-white hover:bg-white/10 border-transparent'
+            ]"
+            :title="isRotated ? 'Screen Orientation: 90° Landscape Active. Click to reset to Vertical' : 'Rotate Screen 90° (Landscape View for phones)'"
+          >
+            <svg class="w-4 h-4 transform transition-transform" :class="isRotated ? 'rotate-90 text-amber-400' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+              <path d="M12 18h.01"/>
+            </svg>
+          </button>
+
+          <!-- Zoom Magnifier Trigger -->
+          <button 
+            v-if="currentMode === 'flipbook'"
+            type="button"
+            @click="$emit('toggle-zoom')"
+            class="p-2 rounded-full hover:bg-white/10 text-slate-400 hover:text-sky-300 transition-colors md-state-layer"
+            title="Zoom & Pan Inspector (Z / Double-tap)"
+          >
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              <line x1="11" y1="8" x2="11" y2="14"/>
+              <line x1="8" y1="11" x2="14" y2="11"/>
+            </svg>
+          </button>
+
+          <!-- Keyboard Shortcuts Cheatsheet Trigger -->
+          <button 
+            type="button"
+            @click="shortcutsOpen = true"
+            class="p-2 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-colors md-state-layer hidden sm:flex items-center justify-center"
+            title="Keyboard Shortcuts & Gestures (?)"
+          >
+            <span class="text-xs font-mono font-bold">?</span>
+          </button>
+
           <!-- Re-download / Update Volume from R2 -->
           <button 
             type="button"
@@ -295,12 +358,16 @@
         </div>
       </div>
     </div>
+
+    <!-- Keyboard Shortcuts Cheatsheet Modal -->
+    <KeyboardShortcutsModal :isOpen="shortcutsOpen" @close="shortcutsOpen = false" />
   </header>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useLibraryStore } from '../../stores/library.js';
+import KeyboardShortcutsModal from '../UI/KeyboardShortcutsModal.vue';
 import {
   playPageFlipSound,
   setAmbientMode,
@@ -328,6 +395,14 @@ const props = defineProps({
     type: String,
     default: 'rtl',
   },
+  spreadMode: {
+    type: String,
+    default: 'dual',
+  },
+  isRotated: {
+    type: Boolean,
+    default: false,
+  },
   isBookmarked: {
     type: Boolean,
     default: false,
@@ -343,6 +418,10 @@ const emit = defineEmits([
   'jump-page',
   'update:currentMode',
   'update:readingDirection',
+  'update:spreadMode',
+  'toggle-spread-mode',
+  'toggle-rotation',
+  'toggle-zoom',
   'toggle-bookmark',
 ]);
 
@@ -350,6 +429,7 @@ const libraryStore = useLibraryStore();
 const isFullscreen = ref(false);
 const tocOpen = ref(false);
 const audioMenuOpen = ref(false);
+const shortcutsOpen = ref(false);
 
 const audioSettings = ref(getAudioSettings());
 
