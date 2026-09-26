@@ -6,12 +6,12 @@
     <!-- LEFT: Mini Isometric 3D Book Render -->
     <div class="perspective-1000 shrink-0 w-24 h-32 flex items-center justify-center relative cursor-pointer" @click="openReader">
       <div 
-        class="preserve-3d relative w-20 h-28 transform transition-transform duration-300 group-hover:scale-105 group-hover:rotate-y-[15deg]"
-        style="transform: rotateY(25deg) rotateX(4deg);"
+        class="preserve-3d relative w-20 h-28 transform transition-transform duration-300 group-hover:scale-105 group-hover:rotate-y-[-15deg]"
+        style="transform: rotateY(-25deg) rotateX(4deg);"
       >
         <!-- Mini Front Cover -->
         <div 
-          class="absolute inset-0 rounded-r bg-[#1e2235] shadow-elevation-2 overflow-hidden border-r border-t border-b border-white/20"
+          class="absolute inset-0 rounded-l bg-[#1e2235] shadow-elevation-2 overflow-hidden border-l border-t border-b border-white/20"
           style="transform: translateZ(9px);"
         >
           <img 
@@ -33,27 +33,25 @@
           <div class="absolute inset-0 cover-gloss opacity-30"></div>
         </div>
 
-        <!-- Mini Spine -->
-        <div 
-          class="absolute top-0 bottom-0 w-[18px] overflow-hidden flex flex-col items-center justify-between py-1"
-          :style="{
-            left: 'calc(50% - 9px)',
-            transform: 'rotateY(-90deg) translateZ(40px)',
-            backgroundColor: volume.spineColor || '#1e2235',
-          }"
-        >
-          <span class="text-[7px] font-bold text-white font-mono">{{ volume.volumeNumber }}</span>
-          <span class="text-[6px] text-white [writing-mode:vertical-rl] font-bold truncate">OP</span>
-        </div>
-
-        <!-- Mini Fore-edge pages -->
+        <!-- Mini Fore-edge pages (Left Face) -->
         <div 
           class="absolute top-0 bottom-0 w-[18px] paper-block-pattern"
           :style="{
             left: 'calc(50% - 9px)',
-            transform: 'rotateY(90deg) translateZ(40px)',
+            transform: 'rotateY(-90deg) translateZ(40px)',
           }"
         ></div>
+
+        <!-- Mini Spine (Right Face - Manga Orientation) -->
+        <div 
+          class="absolute top-0 bottom-0 w-[18px] overflow-hidden flex flex-col items-center justify-between bg-white"
+          :style="{
+            left: 'calc(50% - 9px)',
+            transform: 'rotateY(90deg) translateZ(40px)',
+          }"
+        >
+          <MangaSpine :volume-number="volume.volumeNumber" :compact="true" />
+        </div>
       </div>
     </div>
 
@@ -154,6 +152,7 @@ import { ref, computed } from 'vue';
 import { useLibraryStore } from '../../stores/library.js';
 import { useProgressStore } from '../../stores/progress.js';
 import ProgressBarMD3 from '../UI/ProgressBarMD3.vue';
+import MangaSpine from './MangaSpine.vue';
 
 const props = defineProps({
   volume: {

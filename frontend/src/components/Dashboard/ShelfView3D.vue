@@ -57,46 +57,15 @@
         >
           <!-- 3D Book Spine (Official 2.03 x 19.05 cm ratio: 25px x 235px - Flat rendering) -->
           <div
-            class="w-[25px] h-[235px] rounded-t-sm flex flex-col justify-between text-center relative overflow-hidden transition-transform"
+            class="w-[25px] h-[235px] rounded-t-sm flex flex-col justify-between text-center relative overflow-hidden transition-transform bg-white"
             :style="{
-              backgroundColor: vol.spineColor || '#1e2235',
               boxShadow: selectedVolume?.volumeNumber === vol.volumeNumber
-                ? '0 20px 30px -10px rgba(0,0,0,0.8), 0 0 20px ' + (vol.spineColor || '#38bdf8') + '80'
+                ? '0 20px 30px -10px rgba(0,0,0,0.8), 0 0 20px rgba(0,160,233,0.8)'
                 : 'none'
             }"
           >
-            <!-- Real Spine Image if available -->
-            <img
-              v-if="vol.spineUrl && !failedSpines.has(vol.volumeNumber)"
-              :src="vol.spineUrl"
-              :alt="`${vol.title} Spine`"
-              class="w-full h-full object-fill object-center pointer-events-none select-none"
-              @error="onSpineError(vol.volumeNumber)"
-              loading="lazy"
-            />
-            <!-- Fallback Spine Graphic -->
-            <template v-else>
-              <!-- Top Spine Jump Logo -->
-              <div class="z-10 pt-2 px-0.5">
-                <span class="text-[7px] font-black text-amber-300 tracking-tighter block leading-none">JC</span>
-                <div class="w-3.5 h-[1px] bg-white/40 mx-auto my-1"></div>
-              </div>
-
-              <!-- Volume Number Emblem -->
-              <div class="my-auto z-10 flex flex-col items-center px-0.5">
-                <div class="w-5 h-5 rounded-full bg-black/60 border border-white/20 flex items-center justify-center font-mono font-black text-[9px] text-white shadow-sm">
-                  {{ vol.volumeNumber }}
-                </div>
-                <span class="text-[7px] font-black text-white tracking-widest uppercase [writing-mode:vertical-rl] max-h-[90px] overflow-hidden truncate mt-1.5">
-                  ONE PIECE
-                </span>
-              </div>
-
-              <!-- Bottom Oda Signature -->
-              <div class="z-10 pb-2 text-[6px] text-white/90 font-bold [writing-mode:vertical-rl] mx-auto">
-                尾田栄一郎
-              </div>
-            </template>
+            <!-- Authentic Reconstructed Jump Comics Manga Spine -->
+            <MangaSpine :volume-number="vol.volumeNumber" />
           </div>
 
           <!-- Top Page Paper Block (Visible when pulled out) -->
@@ -189,6 +158,7 @@
 <script setup>
 import { ref } from 'vue';
 import { useLibraryStore } from '../../stores/library.js';
+import MangaSpine from './MangaSpine.vue';
 
 const props = defineProps({
   volumes: {

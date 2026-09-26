@@ -21,7 +21,7 @@
       >
         <!-- FRONT COVER -->
         <div 
-          class="absolute inset-0 rounded-r-sm overflow-hidden bg-[#181a26] shadow-elevation-3 border-r border-t border-b border-white/10 backface-hidden"
+          class="absolute inset-0 rounded-l-sm overflow-hidden bg-[#181a26] shadow-elevation-3 border-l border-t border-b border-white/10 backface-hidden"
           style="transform: translateZ(14.4px);"
         >
           <!-- Cover Image or High-Aesthetic Graphic -->
@@ -78,7 +78,7 @@
 
         <!-- BACK COVER (180deg) -->
         <div 
-          class="absolute inset-0 rounded-l-sm overflow-hidden bg-[#13151f] shadow-elevation-3 border-l border-t border-b border-white/10 backface-hidden"
+          class="absolute inset-0 rounded-r-sm overflow-hidden bg-[#13151f] shadow-elevation-3 border-r border-t border-b border-white/10 backface-hidden"
           style="transform: rotateY(180deg) translateZ(14.4px);"
         >
           <!-- Real Back Cover Image if available -->
@@ -137,60 +137,29 @@
           <div class="absolute inset-0 bg-gradient-to-tr from-black/40 via-transparent to-white/5 pointer-events-none"></div>
         </div>
 
-        <!-- SPINE (Left Face - Official 2.03cm / 28.8px - Flat rendering) -->
-        <div 
-          class="absolute top-0 bottom-0 w-[28.8px] overflow-hidden flex flex-col justify-between text-center"
-          :style="{
-            left: 'calc(50% - 14.4px)',
-            transform: 'rotateY(-90deg) translateZ(90px)',
-            backgroundColor: volume.spineColor || '#1e2235',
-          }"
-        >
-          <!-- Real Spine Image if available -->
-          <img
-            v-if="volume.spineUrl && !spineImageError"
-            :src="volume.spineUrl"
-            :alt="`${volume.title} Spine`"
-            class="w-full h-full object-fill object-center pointer-events-none select-none"
-            @error="onSpineImageError"
-            loading="lazy"
-          />
-          <!-- Graphic Fallback if spine image is missing -->
-          <template v-else>
-            <!-- Top Spine Logo -->
-            <div class="z-10 pt-2">
-              <span class="text-[8px] font-black text-amber-300 tracking-tighter block">JC</span>
-              <div class="w-5 h-[1px] bg-white/30 mx-auto my-1"></div>
-            </div>
-
-            <!-- Vertical Volume Title & Japanese Text -->
-            <div class="my-auto z-10 flex flex-col items-center">
-              <span class="text-[12px] font-extrabold text-white bg-black/40 w-6 h-6 rounded-full flex items-center justify-center mb-2 font-mono shadow-sm">
-                {{ volume.volumeNumber }}
-              </span>
-              <span class="text-[9px] font-bold text-white tracking-widest uppercase [writing-mode:vertical-rl] max-h-[110px] overflow-hidden truncate">
-                ONE PIECE
-              </span>
-            </div>
-
-            <!-- Bottom Spine Oda Credit -->
-            <div class="z-10 pb-2 text-[8px] text-white/80 font-bold [writing-mode:vertical-rl] mx-auto">
-              尾田栄一郎
-            </div>
-          </template>
-        </div>
-
-        <!-- FORE-EDGE (Right Face - Paper Pages Block) -->
+        <!-- FORE-EDGE (Left Face - Paper Pages Block in Manga Orientation) -->
         <div 
           class="absolute top-0 bottom-0 w-[28.8px] overflow-hidden paper-block-pattern shadow-inner"
           :style="{
             left: 'calc(50% - 14.4px)',
-            transform: 'rotateY(90deg) translateZ(90px)',
+            transform: 'rotateY(-90deg) translateZ(90px)',
           }"
         >
           <!-- Inset page edge shadows -->
           <div class="absolute inset-y-0 left-0 w-1 bg-black/30"></div>
           <div class="absolute inset-y-0 right-0 w-1 bg-black/30"></div>
+        </div>
+
+        <!-- SPINE (Right Face - Official 2.03cm / 28.8px - Authentic Japanese Manga Orientation) -->
+        <div 
+          class="absolute top-0 bottom-0 w-[28.8px] overflow-hidden flex flex-col justify-between text-center bg-white"
+          :style="{
+            left: 'calc(50% - 14.4px)',
+            transform: 'rotateY(90deg) translateZ(90px)',
+          }"
+        >
+          <!-- Authentic Reconstructed Jump Comics Manga Spine -->
+          <MangaSpine :volume-number="volume.volumeNumber" />
         </div>
 
         <!-- TOP EDGE (Top Paper Block) -->
@@ -307,6 +276,7 @@ import { ref, computed } from 'vue';
 import { useLibraryStore } from '../../stores/library.js';
 import { useProgressStore } from '../../stores/progress.js';
 import ProgressBarMD3 from '../UI/ProgressBarMD3.vue';
+import MangaSpine from './MangaSpine.vue';
 
 const props = defineProps({
   volume: {
@@ -336,14 +306,14 @@ const formattedVolumeTitle = computed(() => {
 
 // 3D Physics & Drag Engine State
 const stageRef = ref(null);
-const rotationY = ref(22); // Default isometric aesthetic angle showing cover and spine
+const rotationY = ref(-22); // Default isometric aesthetic angle showing cover and right spine
 const rotationX = ref(0);
 const isDragging = ref(false);
 const hasInteracted = ref(false);
 
 let startX = 0;
 let startY = 0;
-let initialRotY = 22;
+let initialRotY = -22;
 let initialRotX = 0;
 let lastPointerX = 0;
 let velocityX = 0;
@@ -407,7 +377,7 @@ function applyInertia() {
 }
 
 function resetRotation() {
-  rotationY.value = 22;
+  rotationY.value = -22;
   rotationX.value = 0;
   velocityX = 0;
 }
@@ -416,10 +386,10 @@ function toggleFlip() {
   hasInteracted.value = true;
   velocityX = 0;
   rotationX.value = 0;
-  // If close to back (180deg), flip to front (22deg); otherwise flip to 180deg
+  // If close to back (180deg), flip to front (-22deg); otherwise flip to 180deg
   const normY = ((rotationY.value % 360) + 360) % 360;
   if (Math.abs(normY - 180) < 60) {
-    rotationY.value = 22;
+    rotationY.value = -22;
   } else {
     rotationY.value = 180;
   }
