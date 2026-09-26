@@ -13,13 +13,13 @@
       >
         <!-- Individual Manga Pages -->
         <div 
-          v-for="page in displayPages" 
+          v-for="(page, pageIdx) in displayPages" 
           :key="page.pageNumber + '-' + (page.spreadPart || 'single')"
           class="page bg-white overflow-hidden flex items-center relative border-none"
           :class="[
             page.spreadPart === 'left' ? 'justify-end' : page.spreadPart === 'right' ? 'justify-start' : 'justify-center'
           ]"
-          :data-density="page.pageNumber === 1 || page.pageNumber === displayPages.length ? 'hard' : 'soft'"
+          :data-density="pageIdx === 0 || pageIdx === displayPages.length - 1 ? 'hard' : 'soft'"
         >
           <!-- Regular Image Page -->
           <img 
@@ -99,53 +99,62 @@ const activePageNumber = ref(props.initialPage || 1);
 
 /**
  * Transforms the linear pages array for Authentic Japanese Manga Right-to-Left (RTL) reading.
- * On facing spreads:
- * - The RIGHT page is read FIRST (earlier page, e.g. Page 1, Page 3, Page 5).
- * - The LEFT page is read SECOND (later page, e.g. Page 2, Page 4, Page 6).
- * - Double-page spreads keep the Left half on the LEFT and Right half on the RIGHT,
- *   so the reader sweeps from Right (Title/intro) to Left (Climax/reveal).
+ * In authentic Japanese manga:
+ * - The front cover is on the LEFT side of the closed book and opens to the RIGHT.
+ * - All forward page turns flip to the RIGHT (not left).
+ * - On facing spreads:
+ *   - The RIGHT page is read FIRST (earlier page, e.g. Page 1, Page 3, Page 5).
+ *   - The LEFT page is read SECOND (later page, e.g. Page 2, Page 4, Page 6).
+ *   - Double-page spreads keep the Left half on the LEFT and Right half on the RIGHT,
+ *     so the reader sweeps from Right (Title/intro) to Left (Climax/reveal).
+ * By ordering spreads in reversed sequence with StPageFlip, the front cover starts on the LEFT
+ * and every forward turn physically flips to the RIGHT.
  */
 function transformPagesForRtl(rawPages) {
   if (!rawPages || rawPages.length <= 1) return rawPages || [];
 
-  // Page 0 is Front Cover (Spread 0)
-  const result = [rawPages[0]];
+  const spreads = [];
+  // Spread 0: Front Cover
+  spreads.push([rawPages[0]]);
 
-  // Process remaining pages in pairs of 2 (facing pages on desktop spread)
   let i = 1;
   while (i < rawPages.length) {
     const pFirst = rawPages[i];
     const pSecond = i + 1 < rawPages.length ? rawPages[i + 1] : null;
 
-    // Check if this pair is a double-page spread
-    const isSpreadPair = pFirst?.isSpread || pSecond?.isSpread;
-
-    if (isSpreadPair) {
-      // In a double-page spread:
-      // The Left half of the illustration (Young Luffy) must be on the LEFT page
-      // The Right half of the illustration (Romance Dawn) must be on the RIGHT page
-      // Visually: Left half on left screen, Right half on right screen!
-      // Reading flow: Japanese reader reads the Right page first (title/intro), then Left page second (hero/climax)!
-      result.push(pFirst);
-      if (pSecond) {
-        result.push(pSecond);
+    if (pFirst && pSecond) {
+      const isSpread = pFirst.isSpread || pSecond.isSpread;
+      if (isSpread) {
+        // Double-page spread: Left half on Left screen, Right half on Right screen
+        spreads.push([pFirst, pSecond]);
+      } else {
+        // Normal manga pages:
+        // pFirst (Page N) is read 1st -> on RIGHT screen!
+        // pSecond (Page N+1) is read 2nd -> on LEFT screen!
+        // Spread format: [LeftScreen, RightScreen]
+        spreads.push([pSecond, pFirst]);
       }
     } else {
-      // For normal pages in RTL Manga mode:
-      // StPageFlip places the first element of a spread on the LEFT and the second on the RIGHT.
-      // In authentic Japanese manga, you read the RIGHT page first (Page N) and the LEFT page second (Page N+1).
-      // Therefore, the earlier page (pFirst) is placed on the RIGHT, and the later page (pSecond) is placed on the LEFT!
-      if (pSecond) {
-        result.push(pSecond); // placed on LEFT screen
-        result.push(pFirst);  // placed on RIGHT screen
-      } else {
-        result.push(pFirst);
-      }
+      // Single trailing page at end of volume
+      spreads.push([pFirst]);
     }
     i += 2;
   }
 
-  return result;
+  // Ensure total elements across spreads is even for single front and back cover
+  const totalCount = spreads.reduce((acc, sp) => acc + sp.length, 0);
+  if (totalCount % 2 !== 0) {
+    spreads.push([{
+      pageNumber: rawPages.length + 1,
+      url: '',
+      isBlank: true,
+      name: 'Back Endpaper',
+    }]);
+  }
+
+  // Reverse spreads so StPageFlip starts at the Front Cover on the LEFT and turns all pages to the RIGHT
+  const reversedSpreads = [...spreads].reverse();
+  return reversedSpreads.flat();
 }
 
 const displayPages = computed(() => {
@@ -202,9 +211,21 @@ function initPageFlip(targetPageNum = null) {
   // Calculate start index in displayPages based on targetPageNum or initialPage
   const pageToOpen = targetPageNum !== null ? targetPageNum : (activePageNumber.value || props.initialPage || 1);
   let startIdx = 0;
-  if (pageToOpen > 1) {
-    const foundIdx = displayPages.value.findIndex(p => p.pageNumber === pageToOpen);
-    startIdx = foundIdx !== -1 ? foundIdx : Math.max(0, pageToOpen - 1);
+  if (props.readingDirection === 'rtl') {
+    if (pageToOpen > 1) {
+      const foundIdx = displayPages.value.findIndex(p => p.pageNumber === pageToOpen);
+      startIdx = foundIdx !== -1 ? foundIdx : Math.max(0, displayPages.value.length - 1);
+    } else {
+      // In RTL, Front Cover is at the last index of displayPages (Spread Last on the LEFT)
+      startIdx = Math.max(0, displayPages.value.length - 1);
+    }
+  } else {
+    if (pageToOpen > 1) {
+      const foundIdx = displayPages.value.findIndex(p => p.pageNumber === pageToOpen);
+      startIdx = foundIdx !== -1 ? foundIdx : Math.max(0, pageToOpen - 1);
+    } else {
+      startIdx = 0;
+    }
   }
 
   const pageElements = bookContainerRef.value.querySelectorAll('.page');
@@ -234,10 +255,18 @@ function initPageFlip(targetPageNum = null) {
 
     // Event listener for page flips
     pageFlipInstance.on('flip', (e) => {
-      // In StPageFlip, e.data is current index (0-indexed)
+      // In StPageFlip, e.data is current spread[0] index (0-indexed)
       const currentZeroIdx = e.data;
-      const curPageObj = displayPages.value[currentZeroIdx];
-      const pageNum = curPageObj ? curPageObj.pageNumber : currentZeroIdx + 1;
+      let pageNum = 1;
+      if (props.readingDirection === 'rtl') {
+        const p1 = displayPages.value[currentZeroIdx];
+        const p2 = displayPages.value[currentZeroIdx + 1];
+        const validPages = [p1, p2].filter(p => p && !p.isBlank && p.pageNumber);
+        pageNum = validPages.length > 0 ? Math.min(...validPages.map(p => p.pageNumber)) : 1;
+      } else {
+        const curPageObj = displayPages.value[currentZeroIdx];
+        pageNum = curPageObj ? curPageObj.pageNumber : currentZeroIdx + 1;
+      }
       activePageNumber.value = pageNum;
       emit('page-change', pageNum);
       playPageFlipSound();
@@ -253,21 +282,37 @@ function initPageFlip(targetPageNum = null) {
 
 function turnNext() {
   if (pageFlipInstance) {
-    pageFlipInstance.flipNext();
+    if (props.readingDirection === 'rtl') {
+      // In RTL manga, reading forward turns pages to the RIGHT (StPageFlip flipPrev)
+      pageFlipInstance.flipPrev();
+    } else {
+      pageFlipInstance.flipNext();
+    }
   }
 }
 
 function turnPrev() {
   if (pageFlipInstance) {
-    pageFlipInstance.flipPrev();
+    if (props.readingDirection === 'rtl') {
+      // In RTL manga, going back turns pages to the LEFT (StPageFlip flipNext)
+      pageFlipInstance.flipNext();
+    } else {
+      pageFlipInstance.flipPrev();
+    }
   }
 }
 
 function jumpToPage(pageNum) {
-  if (pageFlipInstance && displayPages.value) {
-    const idx = displayPages.value.findIndex(p => p.pageNumber === pageNum);
-    const targetIdx = idx !== -1 ? idx : Math.max(0, Math.min(displayPages.value.length - 1, pageNum - 1));
-    pageFlipInstance.flip(targetIdx);
+  if (pageFlipInstance && displayPages.value && displayPages.value.length > 0) {
+    if (props.readingDirection === 'rtl') {
+      const idx = displayPages.value.findIndex(p => p.pageNumber === pageNum);
+      const targetIdx = idx !== -1 ? idx : Math.max(0, displayPages.value.length - 1);
+      pageFlipInstance.flip(targetIdx);
+    } else {
+      const idx = displayPages.value.findIndex(p => p.pageNumber === pageNum);
+      const targetIdx = idx !== -1 ? idx : Math.max(0, Math.min(displayPages.value.length - 1, pageNum - 1));
+      pageFlipInstance.flip(targetIdx);
+    }
   }
 }
 
