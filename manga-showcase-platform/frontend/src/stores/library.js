@@ -162,6 +162,7 @@ export const useLibraryStore = defineStore('library', {
           pageCount: 200,
           coverUrl: `comics/covers/cover-v${v < 10 ? '0' + v : v}.webp`,
           backCoverUrl: `comics/covers/back-cover-v${v < 10 ? '0' + v : v}.webp`,
+          spineUrl: `comics/covers/spine-v${v < 10 ? '0' + v : v}.webp`,
           spineColor: '#38bdf8',
           available: v <= 2,
           cbzFile: `One Piece - v${v < 10 ? '0' + v : v} (c${String((v - 1) * 8 + 1).padStart(3, '0')}-${String(v * 8).padStart(3, '0')}).cbz`

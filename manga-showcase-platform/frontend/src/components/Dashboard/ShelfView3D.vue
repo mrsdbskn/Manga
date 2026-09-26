@@ -57,7 +57,7 @@
         >
           <!-- 3D Book Spine -->
           <div
-            class="w-[42px] h-[230px] rounded-t-sm flex flex-col justify-between py-3 px-1 text-center shadow-2xl relative overflow-hidden border-t border-r border-white/20 transition-transform"
+            class="w-[42px] h-[230px] rounded-t-sm flex flex-col justify-between text-center shadow-2xl relative overflow-hidden border-t border-r border-white/20 transition-transform"
             :style="{
               backgroundColor: vol.spineColor || '#1e2235',
               boxShadow: selectedVolume?.volumeNumber === vol.volumeNumber
@@ -65,26 +65,38 @@
                 : 'inset -3px 0 6px rgba(0,0,0,0.5), inset 3px 0 6px rgba(255,255,255,0.15), 4px 6px 15px rgba(0,0,0,0.6)'
             }"
           >
-            <!-- Top Spine Jump Logo -->
-            <div class="z-10">
-              <span class="text-[9px] font-black text-amber-300 tracking-tighter block leading-none">JC</span>
-              <div class="w-5 h-[1px] bg-white/40 mx-auto my-1.5"></div>
-            </div>
-
-            <!-- Volume Number Emblem -->
-            <div class="my-auto z-10 flex flex-col items-center">
-              <div class="w-7 h-7 rounded-full bg-black/50 border border-white/20 flex items-center justify-center font-mono font-black text-xs text-white shadow-md">
-                {{ vol.volumeNumber }}
+            <!-- Real Spine Image if available -->
+            <img
+              v-if="vol.spineUrl && !failedSpines.has(vol.volumeNumber)"
+              :src="vol.spineUrl"
+              :alt="`${vol.title} Spine`"
+              class="w-full h-full object-fill object-center pointer-events-none select-none"
+              @error="onSpineError(vol.volumeNumber)"
+              loading="lazy"
+            />
+            <!-- Fallback Spine Graphic -->
+            <template v-else>
+              <!-- Top Spine Jump Logo -->
+              <div class="z-10 pt-3 px-1">
+                <span class="text-[9px] font-black text-amber-300 tracking-tighter block leading-none">JC</span>
+                <div class="w-5 h-[1px] bg-white/40 mx-auto my-1.5"></div>
               </div>
-              <span class="text-[9px] font-black text-white tracking-widest uppercase [writing-mode:vertical-rl] max-h-[110px] overflow-hidden truncate mt-2 drop-shadow">
-                ONE PIECE
-              </span>
-            </div>
 
-            <!-- Bottom Oda Signature -->
-            <div class="z-10 text-[8px] text-white/90 font-bold [writing-mode:vertical-rl] mx-auto drop-shadow">
-              尾田栄一郎
-            </div>
+              <!-- Volume Number Emblem -->
+              <div class="my-auto z-10 flex flex-col items-center px-1">
+                <div class="w-7 h-7 rounded-full bg-black/50 border border-white/20 flex items-center justify-center font-mono font-black text-xs text-white shadow-md">
+                  {{ vol.volumeNumber }}
+                </div>
+                <span class="text-[9px] font-black text-white tracking-widest uppercase [writing-mode:vertical-rl] max-h-[110px] overflow-hidden truncate mt-2 drop-shadow">
+                  ONE PIECE
+                </span>
+              </div>
+
+              <!-- Bottom Oda Signature -->
+              <div class="z-10 pb-3 text-[8px] text-white/90 font-bold [writing-mode:vertical-rl] mx-auto drop-shadow">
+                尾田栄一郎
+              </div>
+            </template>
 
             <!-- Spine Gloss & Book Curvature Reflection -->
             <div class="absolute inset-0 bg-gradient-to-r from-black/40 via-white/15 to-black/30 pointer-events-none"></div>
@@ -194,6 +206,11 @@ const props = defineProps({
 const libraryStore = useLibraryStore();
 const shelfScrollRef = ref(null);
 const selectedVolume = ref(null);
+const failedSpines = ref(new Set());
+
+function onSpineError(volNum) {
+  failedSpines.value.add(volNum);
+}
 
 function scrollShelf(amount) {
   if (shelfScrollRef.value) {

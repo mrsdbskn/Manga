@@ -406,9 +406,10 @@ def first_chapter_has_volume_cover(
     covers_dir: Optional[Path] = None,
 ) -> bool:
     """
-    Checks if the first chapter of a volume already includes the official volume cover as its opening page.
+    Checks if the first chapter of a volume already includes a volume cover as its opening page.
     VIZ digital releases routinely place the full-color volume cover as page 1 of the opening chapter
-    (e.g., Chapter 1, 9, 18, 27...). Returns True if detected, preventing duplicate covers.
+    (e.g., Chapter 1, 9, 18, 27...). Later weekly chapters or scanlations do not have volume covers.
+    Returns True if detected, preventing duplicate covers.
     """
     if not ch_cbz_path.exists():
         return False
@@ -426,21 +427,50 @@ def first_chapter_has_volume_cover(
             img_names.sort(key=natural_sort_key)
             first_img_name = img_names[0]
 
+            # 1. Direct filename indicator
+            if "cover" in first_img_name.lower():
+                return True
+
             if not PIL_AVAILABLE:
-                return "cover" in first_img_name.lower()
+                return False
 
             first_bytes = z.read(first_img_name)
-            im1 = Image.open(io.BytesIO(first_bytes)).convert("L").resize((32, 48))
+            im1 = Image.open(io.BytesIO(first_bytes))
+            stat1 = im1.convert("HSV").split()[1]
+            data1 = list(stat1.get_flattened_data()) if hasattr(stat1, "get_flattened_data") else list(stat1.getdata())
+            sat1 = sum(data1) / len(data1) if data1 else 0.0
 
+            # If page 1 is grayscale / black & white, it is definitely a story page, not a cover
+            if sat1 < 25.0:
+                return False
+
+            # If page 1 is color, check page 2 if present
+            if len(img_names) > 1:
+                p2_bytes = z.read(img_names[1])
+                im2 = Image.open(io.BytesIO(p2_bytes))
+                stat2 = im2.convert("HSV").split()[1]
+                data2 = list(stat2.get_flattened_data()) if hasattr(stat2, "get_flattened_data") else list(stat2.getdata())
+                sat2 = sum(data2) / len(data2) if data2 else 0.0
+
+                # Strongest indicator: Page 1 is full-color (volume cover) and page 2 is B&W story page
+                if sat1 >= 30.0 and sat2 < 20.0:
+                    return True
+
+            # If saturation is high, it's a color cover page
+            if sat1 >= 40.0:
+                return True
+
+            # Fallback visual diff against cover_file if exists
             cover_file = find_volume_cover_file(covers_dir, vol_num)
             if cover_file and cover_file.exists():
                 cov_im = Image.open(cover_file).convert("L").resize((32, 48))
-                p1 = list(im1.get_flattened_data()) if hasattr(im1, "get_flattened_data") else list(im1.getdata())
+                im1_sm = im1.convert("L").resize((32, 48))
+                p1 = list(im1_sm.get_flattened_data()) if hasattr(im1_sm, "get_flattened_data") else list(im1_sm.getdata())
                 p2 = list(cov_im.get_flattened_data()) if hasattr(cov_im, "get_flattened_data") else list(cov_im.getdata())
                 if p1 and p2 and len(p1) == len(p2):
                     diff = sum(abs(a - b) for a, b in zip(p1, p2)) / len(p1)
-                    # Visual match: identical covers typically diff < 10.0, story pages are > 60.0
-                    return diff < 20.0
+                    if diff < 35.0:
+                        return True
     except Exception:
         pass
 
@@ -479,6 +509,7 @@ def scan_folder_for_bundleable_volumes(
     src_path = Path(source_dir).resolve()
     if not src_path.exists() or not src_path.is_dir():
         return {
+            "source_path": str(src_path),
             "total_chapters": 0,
             "chapter_map": {},
             "ready_volumes": [],
@@ -572,13 +603,14 @@ def bundle_volume_from_chapters(
     include_back_cover: bool = True,
     compress_webp: bool = False,
     sync_catalog: bool = True,
+    prefer_official_cover: bool = False,
     log_callback: Callable[[str], None] = print,
 ) -> Path:
     """
     Bundles the constituent chapter CBZ files for vol_num into a standardized volume CBZ:
-      1. Official volume cover from /comics/covers as page_0000_cover (first page)
+      1. Front cover (smartly handled: keeps chapter cover or replaces with official Shueisha cover)
       2. Constituent chapter pages (page_0001 ... page_NNNN), optionally WebP-compressed
-      3. Dark Viz description back cover (page_XXXX_back_cover)
+      3. Dark Viz description back cover (page_XXXX_back_cover) with spread parity
       4. Chapter Table of Contents (toc.json)
       5. ComicRack ComicInfo.xml metadata
     """
@@ -626,14 +658,30 @@ def bundle_volume_from_chapters(
     last_page_h = 1800
 
     with zipfile.ZipFile(archive_dest, "w", zipfile.ZIP_DEFLATED) as z_out:
-        # Check if first chapter already includes the official volume cover as its opening page
+        # Check if first chapter already includes a volume cover as its opening page
         first_ch_has_cover = False
         first_ch_path = chapter_map.get(st)
         if first_ch_path and first_ch_path.exists():
             first_ch_has_cover = first_chapter_has_volume_cover(first_ch_path, vol_num, resolved_covers_dir)
 
+        # Determine front cover inclusion and whether to skip first chapter's page 1
+        embed_external_cover = False
+        skip_first_ch_page1 = False
+
+        if include_cover:
+            if prefer_official_cover:
+                # User preference: Use high-res official Shueisha cover
+                embed_external_cover = True
+                if first_ch_has_cover:
+                    skip_first_ch_page1 = True
+            else:
+                # Default preference: If first chapter already has cover, keep it and skip external cover
+                # If first chapter lacks a cover, embed official cover
+                if not first_ch_has_cover:
+                    embed_external_cover = True
+
         # 1. Official Front Cover (page_0000_cover)
-        if include_cover and not first_ch_has_cover:
+        if embed_external_cover:
             cover_file = find_volume_cover_file(resolved_covers_dir, vol_num)
             if cover_file:
                 c_ext = cover_file.suffix.lower() or ".jpg"
@@ -654,11 +702,16 @@ def bundle_volume_from_chapters(
                 arc_cover_name = f"page_0000_cover{c_ext}"
                 z_out.writestr(arc_cover_name, cover_data)
                 total_pages_count += 1
-                log_callback(f"   [Front Cover] Embedded {cover_file.name} as {arc_cover_name}")
+                if skip_first_ch_page1:
+                    log_callback(f"   [Front Cover] Embedded official Shueisha cover {cover_file.name} (replacing Chapter {st} cover page 1).")
+                else:
+                    log_callback(f"   [Front Cover] Embedded {cover_file.name} as {arc_cover_name}")
             else:
                 log_callback(f"   [Notice] Front cover not found in covers directory for Volume {vol_num}.")
         elif first_ch_has_cover:
-            log_callback(f"   [Front Cover] Chapter {st} already includes the official volume cover as page 1 (de-duplicated).")
+            log_callback(f"   [Front Cover] Chapter {st} already includes front cover as page 1 (retained, external cover skipped).")
+        else:
+            log_callback(f"   [Front Cover] Front cover skipped as requested.")
 
         # 2. Constituent Chapter Pages
         for ch in range(st, en + 1):
@@ -684,6 +737,10 @@ def bundle_volume_from_chapters(
                     and not is_covers_path(n)
                 ]
                 img_names.sort(key=natural_sort_key)
+
+                # Skip chapter's first page if it is an existing cover and official cover was embedded
+                if ch == st and skip_first_ch_page1 and len(img_names) > 0:
+                    img_names = img_names[1:]
 
                 for n in img_names:
                     data = z_in.read(n)
@@ -842,6 +899,7 @@ def bundle_all_ready_volumes(
     compress_webp: bool = False,
     skip_already_bundled: bool = True,
     sync_catalog: bool = True,
+    prefer_official_cover: bool = False,
     progress_callback: Optional[Callable[[float, str], None]] = None,
     log_callback: Callable[[str], None] = print,
     cancel_flag: Optional[Callable[[], bool]] = None,
@@ -887,6 +945,7 @@ def bundle_all_ready_volumes(
                 include_back_cover=include_back_cover,
                 compress_webp=compress_webp,
                 sync_catalog=False,  # Defer sync until the end
+                prefer_official_cover=prefer_official_cover,
                 log_callback=lambda msg: log_callback(f"   {msg}"),
             )
             bundled_count += 1
@@ -914,7 +973,8 @@ def main():
     parser.add_argument("--covers-dir", type=str, default=None, help="Directory containing volume cover images and viz_volumes_metadata.json")
     parser.add_argument("--no-cover", action="store_true", help="Do not include front cover image")
     parser.add_argument("--no-back-cover", action="store_true", help="Do not generate/include Viz back cover")
-    parser.add_argument("--webp", action="store_true", help="Compress images to WebP (saves ~65% file size, fits 100+ volumes in free 10GB R2 tier)")
+    parser.add_argument("--prefer-official-cover", action="store_true", help="Replace chapter 1 cover with official Shueisha cover (instead of keeping chapter cover)")
+    parser.add_argument("--webp", action="store_true", help="Compress images to WebP (saves ~65%% file size, fits 100+ volumes in free 10GB R2 tier)")
     parser.add_argument("--scan", action="store_true", help="Scan and list ready/partial volumes")
     parser.add_argument("--volume", type=int, help="Bundle a specific volume number")
     parser.add_argument("--all", action="store_true", help="Bundle all ready volumes")
@@ -952,6 +1012,7 @@ def main():
             include_back_cover=not args.no_back_cover,
             compress_webp=args.webp,
             sync_catalog=not args.no_sync,
+            prefer_official_cover=args.prefer_official_cover,
         )
         sys.exit(0)
 
@@ -965,6 +1026,7 @@ def main():
             compress_webp=args.webp,
             skip_already_bundled=not args.force,
             sync_catalog=not args.no_sync,
+            prefer_official_cover=args.prefer_official_cover,
         )
         sys.exit(0)
 

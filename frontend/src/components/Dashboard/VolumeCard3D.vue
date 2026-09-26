@@ -141,33 +141,45 @@
 
         <!-- SPINE (Left Face) -->
         <div 
-          class="absolute top-0 bottom-0 w-[36px] overflow-hidden flex flex-col justify-between py-2 text-center shadow-lg"
+          class="absolute top-0 bottom-0 w-[36px] overflow-hidden flex flex-col justify-between text-center shadow-lg"
           :style="{
             left: 'calc(50% - 18px)',
             transform: 'rotateY(-90deg) translateZ(90px)',
             backgroundColor: volume.spineColor || '#1e2235',
           }"
         >
-          <!-- Top Spine Logo -->
-          <div class="z-10">
-            <span class="text-[8px] font-black text-amber-300 tracking-tighter block">JC</span>
-            <div class="w-5 h-[1px] bg-white/30 mx-auto my-1"></div>
-          </div>
+          <!-- Real Spine Image if available -->
+          <img
+            v-if="volume.spineUrl && !spineImageError"
+            :src="volume.spineUrl"
+            :alt="`${volume.title} Spine`"
+            class="w-full h-full object-fill object-center pointer-events-none select-none"
+            @error="onSpineImageError"
+            loading="lazy"
+          />
+          <!-- Graphic Fallback if spine image is missing -->
+          <template v-else>
+            <!-- Top Spine Logo -->
+            <div class="z-10 pt-2">
+              <span class="text-[8px] font-black text-amber-300 tracking-tighter block">JC</span>
+              <div class="w-5 h-[1px] bg-white/30 mx-auto my-1"></div>
+            </div>
 
-          <!-- Vertical Volume Title & Japanese Text -->
-          <div class="my-auto z-10 flex flex-col items-center">
-            <span class="text-[12px] font-extrabold text-white bg-black/40 w-6 h-6 rounded-full flex items-center justify-center mb-2 font-mono shadow-sm">
-              {{ volume.volumeNumber }}
-            </span>
-            <span class="text-[9px] font-bold text-white tracking-widest uppercase [writing-mode:vertical-rl] max-h-[110px] overflow-hidden truncate">
-              ONE PIECE
-            </span>
-          </div>
+            <!-- Vertical Volume Title & Japanese Text -->
+            <div class="my-auto z-10 flex flex-col items-center">
+              <span class="text-[12px] font-extrabold text-white bg-black/40 w-6 h-6 rounded-full flex items-center justify-center mb-2 font-mono shadow-sm">
+                {{ volume.volumeNumber }}
+              </span>
+              <span class="text-[9px] font-bold text-white tracking-widest uppercase [writing-mode:vertical-rl] max-h-[110px] overflow-hidden truncate">
+                ONE PIECE
+              </span>
+            </div>
 
-          <!-- Bottom Spine Oda Credit -->
-          <div class="z-10 text-[8px] text-white/80 font-bold [writing-mode:vertical-rl] mx-auto">
-            尾田栄一郎
-          </div>
+            <!-- Bottom Spine Oda Credit -->
+            <div class="z-10 pb-2 text-[8px] text-white/80 font-bold [writing-mode:vertical-rl] mx-auto">
+              尾田栄一郎
+            </div>
+          </template>
 
           <!-- Spine Curvature Texture & Highlight -->
           <div class="absolute inset-0 spine-emboss pointer-events-none"></div>
@@ -424,6 +436,7 @@ function openReader() {
 
 const imageError = ref(false);
 const backImageError = ref(false);
+const spineImageError = ref(false);
 
 function onImageError() {
   imageError.value = true;
@@ -431,5 +444,9 @@ function onImageError() {
 
 function onBackImageError() {
   backImageError.value = true;
+}
+
+function onSpineImageError() {
+  spineImageError.value = true;
 }
 </script>

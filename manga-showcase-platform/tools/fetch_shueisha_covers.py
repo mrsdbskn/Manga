@@ -134,13 +134,18 @@ def save_image_as_jpg_and_webp(image_bytes: bytes, jpg_path: Path, webp_path: Pa
 
 def download_and_save_cover(
     vol_num: int,
-    cover_type: str,  # 'front' or 'back'
+    cover_type: str,  # 'front', 'back', or 'spine'
     url: str,
     target_dirs: List[Path],
     force: bool = False,
 ) -> bool:
     """Downloads an image from URL and saves to target directories as JPG and WebP."""
-    prefix = "cover" if cover_type == "front" else "back-cover"
+    if cover_type == "front":
+        prefix = "cover"
+    elif cover_type == "back":
+        prefix = "back-cover"
+    else:
+        prefix = "spine"
     base_name = f"{prefix}-v{vol_num:02d}"
 
     # Check if first target directory already has both files
@@ -182,10 +187,12 @@ def process_volume(
     target_dirs: List[Path],
     force_front: bool = False,
     force_back: bool = False,
+    include_spine: bool = False,
 ) -> Dict[str, Any]:
     vol_num = meta["volume"]
     front_ok = False
     back_ok = False
+    spine_ok = False
 
     if meta.get("frontUrl"):
         front_ok = download_and_save_cover(
@@ -205,9 +212,19 @@ def process_volume(
             force=force_back,
         )
 
+    if include_spine and meta.get("spineUrl"):
+        spine_ok = download_and_save_cover(
+            vol_num=vol_num,
+            cover_type="spine",
+            url=meta["spineUrl"],
+            target_dirs=target_dirs,
+            force=force_front,
+        )
+
     status = []
     if front_ok: status.append("Front OK")
     if back_ok: status.append("Back OK")
+    if spine_ok: status.append("Spine OK")
     print(f"Volume {vol_num:02d}: {', '.join(status) if status else 'None'}")
 
     return {
@@ -215,16 +232,20 @@ def process_volume(
         "isbn": meta.get("isbn"),
         "frontSaved": front_ok,
         "backSaved": back_ok,
+        "spineSaved": spine_ok,
         "frontUrl": meta.get("frontUrl"),
         "backUrl": meta.get("backUrl"),
+        "spineUrl": meta.get("spineUrl"),
     }
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Download official Shueisha Front & Back Covers")
+    parser = argparse.ArgumentParser(description="Download official Shueisha Front, Back & Spine Covers")
     parser.add_argument("--workers", type=int, default=8, help="Parallel worker threads")
+    parser.add_argument("--volume", type=int, default=None, help="Download only a specific volume number (e.g. 115)")
     parser.add_argument("--force", action="store_true", help="Force re-download all covers")
     parser.add_argument("--force-front", action="store_true", help="Force update front covers with 1200px Shueisha covers")
+    parser.add_argument("--include-spine", action="store_true", help="Also download official 3D perspective spine/cover image (_150.jpg) when available")
     args = parser.parse_args()
 
     script_dir = Path(__file__).resolve().parent
@@ -242,6 +263,9 @@ def main():
         td.mkdir(parents=True, exist_ok=True)
 
     items = get_all_series_items()
+    if args.volume:
+        items = [it for it in items if int(float(it.get("volume_number") or it.get("view_volume_number") or 0)) == args.volume]
+        print(f"Filtered to Volume {args.volume}.")
 
     print(f"\nResolving cover image URLs for all {len(items)} volumes in parallel...")
     volume_metas: List[Dict[str, Any]] = []
@@ -258,9 +282,6 @@ def main():
     print(f"Resolved cover endpoints for {len(volume_metas)} volumes.")
 
     print(f"\nDownloading high-res covers (1200px) & generating WebPs with {args.workers} workers...")
-    # Note: force-front will upgrade front covers (like 114, 115 or low-res covers)
-    # By default, if front cover already exists (v01-v113), we preserve it unless --force-front is given,
-    # but for missing volumes (114, 115+) or missing back covers, we always download!
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as executor:
         futures = {
@@ -270,6 +291,7 @@ def main():
                 target_dirs,
                 args.force or args.force_front,
                 args.force or True,  # Back covers are always downloaded since they were missing!
+                args.include_spine,
             ): meta
             for meta in volume_metas
         }

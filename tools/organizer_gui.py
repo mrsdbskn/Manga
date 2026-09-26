@@ -330,7 +330,12 @@ def pack_folder_to_volume_cbz(
 
         # Loose story pages
         page_idx = 1
-        for img_path in image_files:
+        loose_imgs_to_pack = list(image_files)
+        if cover_file and loose_imgs_to_pack and ("cover" in loose_imgs_to_pack[0].name.lower() or "page_0000" in loose_imgs_to_pack[0].name.lower()):
+            log_callback(f"   [Notice] Skipping loose cover page {loose_imgs_to_pack[0].name} to prevent duplication with official cover.")
+            loose_imgs_to_pack = loose_imgs_to_pack[1:]
+
+        for img_path in loose_imgs_to_pack:
             arc_name = f"page_{page_idx:04d}{img_path.suffix.lower()}"
             z.write(img_path, arcname=arc_name)
             page_idx += 1
@@ -553,7 +558,19 @@ class MangaOrganizerApp:
             width=140,
             command=self._start_bundle_selected_thread,
         )
-        self.bundle_selected_btn.pack(side="left")
+        self.bundle_selected_btn.pack(side="left", padx=(0, 10))
+
+        # Cover Option Toggle (OFF = Keep Chapter Cover if present; ON = Replace with official Shueisha cover)
+        self.shueisha_cover_var = ctk.BooleanVar(value=False)
+        self.shueisha_cover_check = ctk.CTkCheckBox(
+            action_row_2,
+            text="🎨 Use Shueisha Cover (Replaces Ch 1 Cover)",
+            variable=self.shueisha_cover_var,
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#f59e0b",
+            width=280,
+        )
+        self.shueisha_cover_check.pack(side="left")
 
         # Third Row for Partial Volumes (1-Click Missing Chapters Download)
         action_row_3 = ctk.CTkFrame(bundler_frame, fg_color="transparent")
@@ -860,6 +877,7 @@ class MangaOrganizerApp:
                     source_dir=src,
                     output_dir=out,
                     compress_webp=self.webp_var.get(),
+                    prefer_official_cover=self.shueisha_cover_var.get(),
                     skip_already_bundled=True,
                     sync_catalog=True,
                     progress_callback=on_prog,
@@ -911,6 +929,7 @@ class MangaOrganizerApp:
                     chapter_map=ch_map,
                     output_dir=out,
                     compress_webp=self.webp_var.get(),
+                    prefer_official_cover=self.shueisha_cover_var.get(),
                     sync_catalog=True,
                     log_callback=self.log,
                 )
@@ -962,6 +981,7 @@ class MangaOrganizerApp:
                     source_dir=src,
                     output_dir=out,
                     compress_webp=self.webp_var.get(),
+                    prefer_official_cover=self.shueisha_cover_var.get(),
                     skip_already_bundled=True,
                     sync_catalog=True,
                     progress_callback=on_prog,
@@ -1481,6 +1501,7 @@ def run_cli():
     parser.add_argument("--bundle-all", action="store_true", help="Auto-bundle all ready volumes from chapter CBZs in source folder")
     parser.add_argument("--bundle-volume", type=int, help="Bundle a specific volume number from chapter CBZs in source folder")
     parser.add_argument("--scan-bundles", action="store_true", help="Scan source folder and list ready/partial volumes")
+    parser.add_argument("--prefer-official-cover", action="store_true", help="Replace chapter 1 cover with official Shueisha cover (default: keep chapter cover if present)")
 
     args, unknown = parser.parse_known_args()
 
@@ -1512,7 +1533,7 @@ def run_cli():
             print(f"[CLI] Auto-bundling all ready volumes from '{src}' into '{args.output}'...")
             if bundle_all_ready_volumes is None:
                 raise ImportError("volume_bundler module not found.")
-            res = bundle_all_ready_volumes(source_dir=src, output_dir=out_dir, sync_catalog=True)
+            res = bundle_all_ready_volumes(source_dir=src, output_dir=out_dir, sync_catalog=True, prefer_official_cover=args.prefer_official_cover)
             print(f"[CLI] Finished! Bundled: {res['bundled']}, Skipped: {res['skipped']}, Failed: {len(res['failed'])}")
             return 0
 
@@ -1522,7 +1543,7 @@ def run_cli():
             if scan_folder_for_bundleable_volumes is None or bundle_volume_from_chapters is None:
                 raise ImportError("volume_bundler module not found.")
             scan_res = scan_folder_for_bundleable_volumes(src)
-            archive = bundle_volume_from_chapters(vol_num=args.bundle_volume, chapter_map=scan_res["chapter_map"], output_dir=out_dir, sync_catalog=True)
+            archive = bundle_volume_from_chapters(vol_num=args.bundle_volume, chapter_map=scan_res["chapter_map"], output_dir=out_dir, sync_catalog=True, prefer_official_cover=args.prefer_official_cover)
             print(f"[CLI] Finished! Archive: {archive}")
             return 0
 
