@@ -6,14 +6,14 @@
     <!-- 3D Perspective Stage -->
     <div 
       ref="stageRef"
-      class="perspective-1200 w-[200px] h-[290px] flex items-center justify-center cursor-grab active:cursor-grabbing relative py-4"
+      class="perspective-1200 w-[210px] h-[300px] flex items-center justify-center cursor-grab active:cursor-grabbing relative py-4"
       @pointerdown="onPointerDown"
       @dblclick="resetRotation"
       title="Drag to spin 360° • Double-click to reset"
     >
-      <!-- 3D Book Container with Dynamic Rotation -->
+      <!-- 3D Book Container with Dynamic Rotation (Official 12.7 x 2.03 x 19.05 cm) -->
       <div 
-        class="preserve-3d relative w-[180px] h-[260px] transition-transform will-change-transform"
+        class="preserve-3d relative w-[180px] h-[270px] transition-transform will-change-transform"
         :style="{
           transform: `rotateY(${rotationY}deg) rotateX(${rotationX}deg)`,
           transition: isDragging ? 'none' : 'transform 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
@@ -21,8 +21,8 @@
       >
         <!-- FRONT COVER -->
         <div 
-          class="absolute inset-0 rounded-r-md overflow-hidden bg-[#181a26] shadow-elevation-3 border-r border-t border-b border-white/10 backface-hidden"
-          style="transform: translateZ(18px);"
+          class="absolute inset-0 rounded-r-sm overflow-hidden bg-[#181a26] shadow-elevation-3 border-r border-t border-b border-white/10 backface-hidden"
+          style="transform: translateZ(14.4px);"
         >
           <!-- Cover Image or High-Aesthetic Graphic -->
           <img 
@@ -80,8 +80,8 @@
 
         <!-- BACK COVER (180deg) -->
         <div 
-          class="absolute inset-0 rounded-l-md overflow-hidden bg-[#13151f] shadow-elevation-3 border-l border-t border-b border-white/10 backface-hidden"
-          style="transform: rotateY(180deg) translateZ(18px);"
+          class="absolute inset-0 rounded-l-sm overflow-hidden bg-[#13151f] shadow-elevation-3 border-l border-t border-b border-white/10 backface-hidden"
+          style="transform: rotateY(180deg) translateZ(14.4px);"
         >
           <!-- Real Back Cover Image if available -->
           <img 
@@ -139,11 +139,11 @@
           <div class="absolute inset-0 bg-gradient-to-tr from-black/40 via-transparent to-white/5 pointer-events-none"></div>
         </div>
 
-        <!-- SPINE (Left Face) -->
+        <!-- SPINE (Left Face - Official 2.03cm / 28.8px) -->
         <div 
-          class="absolute top-0 bottom-0 w-[36px] overflow-hidden flex flex-col justify-between text-center shadow-lg"
+          class="absolute top-0 bottom-0 w-[28.8px] overflow-hidden flex flex-col justify-between text-center shadow-lg"
           :style="{
-            left: 'calc(50% - 18px)',
+            left: 'calc(50% - 14.4px)',
             transform: 'rotateY(-90deg) translateZ(90px)',
             backgroundColor: volume.spineColor || '#1e2235',
           }"
@@ -187,9 +187,9 @@
 
         <!-- FORE-EDGE (Right Face - Paper Pages Block) -->
         <div 
-          class="absolute top-0 bottom-0 w-[36px] overflow-hidden paper-block-pattern shadow-inner"
+          class="absolute top-0 bottom-0 w-[28.8px] overflow-hidden paper-block-pattern shadow-inner"
           :style="{
-            left: 'calc(50% - 18px)',
+            left: 'calc(50% - 14.4px)',
             transform: 'rotateY(90deg) translateZ(90px)',
           }"
         >
@@ -200,29 +200,29 @@
 
         <!-- TOP EDGE (Top Paper Block) -->
         <div 
-          class="absolute left-0 right-0 h-[36px] paper-block-top overflow-hidden"
+          class="absolute left-0 right-0 h-[28.8px] paper-block-top overflow-hidden"
           :style="{
-            top: 'calc(50% - 18px)',
-            transform: 'rotateX(90deg) translateZ(130px)',
+            top: 'calc(50% - 14.4px)',
+            transform: 'rotateX(90deg) translateZ(135px)',
           }"
         ></div>
 
         <!-- BOTTOM EDGE (Bottom Paper Block) -->
         <div 
-          class="absolute left-0 right-0 h-[36px] paper-block-top overflow-hidden"
+          class="absolute left-0 right-0 h-[28.8px] paper-block-top overflow-hidden"
           :style="{
-            top: 'calc(50% - 18px)',
-            transform: 'rotateX(-90deg) translateZ(130px)',
+            top: 'calc(50% - 14.4px)',
+            transform: 'rotateX(-90deg) translateZ(135px)',
           }"
         ></div>
 
         <!-- GROUND CAST SHADOW -->
         <div 
-          class="absolute w-[180px] h-[60px] rounded-[50%] blur-md pointer-events-none transition-opacity duration-300"
+          class="absolute w-[180px] h-[55px] rounded-[50%] blur-md pointer-events-none transition-opacity duration-300"
           :style="{
-            top: '255px',
+            top: '265px',
             left: '0px',
-            transform: 'rotateX(80deg) translateZ(-40px)',
+            transform: 'rotateX(80deg) translateZ(-35px)',
             background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0) 70%)',
             opacity: isDragging ? 0.9 : 0.6,
           }"

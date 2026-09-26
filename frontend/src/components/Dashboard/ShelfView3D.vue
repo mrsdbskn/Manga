@@ -55,14 +55,14 @@
             selectedVolume?.volumeNumber === vol.volumeNumber ? '-translate-y-8 z-30 scale-105' : 'hover:-translate-y-4 hover:z-20'
           ]"
         >
-          <!-- 3D Book Spine -->
+          <!-- 3D Book Spine (Official 2.03 x 19.05 cm ratio: 25px x 235px) -->
           <div
-            class="w-[42px] h-[230px] rounded-t-sm flex flex-col justify-between text-center shadow-2xl relative overflow-hidden border-t border-r border-white/20 transition-transform"
+            class="w-[25px] h-[235px] rounded-t-sm flex flex-col justify-between text-center shadow-2xl relative overflow-hidden border-t border-r border-white/20 transition-transform"
             :style="{
               backgroundColor: vol.spineColor || '#1e2235',
               boxShadow: selectedVolume?.volumeNumber === vol.volumeNumber
                 ? '0 20px 30px -10px rgba(0,0,0,0.8), 0 0 20px ' + (vol.spineColor || '#38bdf8') + '80'
-                : 'inset -3px 0 6px rgba(0,0,0,0.5), inset 3px 0 6px rgba(255,255,255,0.15), 4px 6px 15px rgba(0,0,0,0.6)'
+                : 'inset -2px 0 4px rgba(0,0,0,0.5), inset 2px 0 4px rgba(255,255,255,0.15), 3px 5px 12px rgba(0,0,0,0.6)'
             }"
           >
             <!-- Real Spine Image if available -->
@@ -77,23 +77,23 @@
             <!-- Fallback Spine Graphic -->
             <template v-else>
               <!-- Top Spine Jump Logo -->
-              <div class="z-10 pt-3 px-1">
-                <span class="text-[9px] font-black text-amber-300 tracking-tighter block leading-none">JC</span>
-                <div class="w-5 h-[1px] bg-white/40 mx-auto my-1.5"></div>
+              <div class="z-10 pt-2 px-0.5">
+                <span class="text-[7px] font-black text-amber-300 tracking-tighter block leading-none">JC</span>
+                <div class="w-3.5 h-[1px] bg-white/40 mx-auto my-1"></div>
               </div>
 
               <!-- Volume Number Emblem -->
-              <div class="my-auto z-10 flex flex-col items-center px-1">
-                <div class="w-7 h-7 rounded-full bg-black/50 border border-white/20 flex items-center justify-center font-mono font-black text-xs text-white shadow-md">
+              <div class="my-auto z-10 flex flex-col items-center px-0.5">
+                <div class="w-5 h-5 rounded-full bg-black/60 border border-white/20 flex items-center justify-center font-mono font-black text-[9px] text-white shadow-sm">
                   {{ vol.volumeNumber }}
                 </div>
-                <span class="text-[9px] font-black text-white tracking-widest uppercase [writing-mode:vertical-rl] max-h-[110px] overflow-hidden truncate mt-2 drop-shadow">
+                <span class="text-[7px] font-black text-white tracking-widest uppercase [writing-mode:vertical-rl] max-h-[90px] overflow-hidden truncate mt-1.5 drop-shadow">
                   ONE PIECE
                 </span>
               </div>
 
               <!-- Bottom Oda Signature -->
-              <div class="z-10 pb-3 text-[8px] text-white/90 font-bold [writing-mode:vertical-rl] mx-auto drop-shadow">
+              <div class="z-10 pb-2 text-[6px] text-white/90 font-bold [writing-mode:vertical-rl] mx-auto drop-shadow">
                 尾田栄一郎
               </div>
             </template>
@@ -101,14 +101,14 @@
             <!-- Spine Gloss & Book Curvature Reflection -->
             <div class="absolute inset-0 bg-gradient-to-r from-black/40 via-white/15 to-black/30 pointer-events-none"></div>
             <!-- Ribbing Lines -->
-            <div class="absolute top-2 left-0 right-0 h-[2px] bg-black/40"></div>
-            <div class="absolute bottom-2 left-0 right-0 h-[2px] bg-black/40"></div>
+            <div class="absolute top-2 left-0 right-0 h-[1.5px] bg-black/40"></div>
+            <div class="absolute bottom-2 left-0 right-0 h-[1.5px] bg-black/40"></div>
           </div>
 
           <!-- Top Page Paper Block (Visible when pulled out) -->
           <div
             v-if="selectedVolume?.volumeNumber === vol.volumeNumber"
-            class="absolute -top-[12px] left-0 w-[42px] h-[12px] bg-[#f0ebd8] border-t border-l border-r border-[#d4cbaf] shadow-inner"
+            class="absolute -top-[12px] left-0 w-[25px] h-[12px] bg-[#f0ebd8] border-t border-l border-r border-[#d4cbaf] shadow-inner"
             style="transform: skewX(-20deg);"
           ></div>
 

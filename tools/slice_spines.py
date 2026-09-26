@@ -58,8 +58,15 @@ def get_crop_box(volume_num: int) -> tuple[int, int, int, int]:
         raise ValueError(f"Volume {volume_num} is outside sheet range (1-95)")
     return (x1, y1, x2, y2)
 
+# Official Tankōbon Dimensions (Width x Depth x Height):
+# 12.7 cm x 2.03 cm x 19.05 cm (5.0" x 0.8" x 7.5")
+OFFICIAL_WIDTH_CM = 12.7
+OFFICIAL_SPINE_CM = 2.03
+OFFICIAL_HEIGHT_CM = 19.05
+OFFICIAL_SPINE_ASPECT_RATIO = OFFICIAL_SPINE_CM / OFFICIAL_HEIGHT_CM  # ~0.10656
+
 def slice_all_spines(output_dir: str = DEFAULT_OUTPUT_DIR):
-    """Slice volumes 1 to 95 and save both .webp and .jpg."""
+    """Slice volumes 1 to 95 and save both .webp and .jpg scaled to official tankōbon dimensions."""
     os.makedirs(output_dir, exist_ok=True)
     cache_path = os.path.join(CACHE_DIR, "one_piece_spines_1_95.jpg")
     sheet_path = ensure_sheet_image(cache_path)
@@ -67,11 +74,16 @@ def slice_all_spines(output_dir: str = DEFAULT_OUTPUT_DIR):
     print(f"Opening sheet image: {sheet_path}")
     sheet = Image.open(sheet_path).convert("RGB")
     print(f"Sheet dimensions: {sheet.size}")
+    print(f"Target official spine aspect ratio: {OFFICIAL_SPINE_ASPECT_RATIO:.4f} ({OFFICIAL_SPINE_CM}cm / {OFFICIAL_HEIGHT_CM}cm)")
 
     count = 0
     for vol in range(1, 96):
         box = get_crop_box(vol)
         cropped = sheet.crop(box)
+
+        # Scale width to match official tankōbon physical spine ratio
+        target_w = round(cropped.height * OFFICIAL_SPINE_ASPECT_RATIO)
+        official_spine = cropped.resize((target_w, cropped.height), Image.Resampling.LANCZOS)
 
         vol_tag = f"v{vol:02d}"
         jpg_name = f"spine-{vol_tag}.jpg"
@@ -81,13 +93,13 @@ def slice_all_spines(output_dir: str = DEFAULT_OUTPUT_DIR):
         webp_path = os.path.join(output_dir, webp_name)
 
         # Save high quality JPEG and WebP
-        cropped.save(jpg_path, "JPEG", quality=92)
-        cropped.save(webp_path, "WEBP", quality=90, method=6)
+        official_spine.save(jpg_path, "JPEG", quality=93)
+        official_spine.save(webp_path, "WEBP", quality=90, method=6)
         count += 1
         if vol % 20 == 0 or vol == 95:
-            print(f"  Sliced {vol}/95: {webp_name} ({cropped.size[0]}x{cropped.size[1]}px)")
+            print(f"  Sliced {vol}/95: {webp_name} ({official_spine.size[0]}x{official_spine.size[1]}px, ratio={official_spine.size[0]/official_spine.size[1]:.4f})")
 
-    print(f"\n[DONE] Successfully extracted {count} manga spines (Volumes 1 to 95)")
+    print(f"\n[DONE] Successfully extracted {count} manga spines formatted to official dimensions ({OFFICIAL_WIDTH_CM} x {OFFICIAL_SPINE_CM} x {OFFICIAL_HEIGHT_CM} cm)")
     print(f"Destination directory: {output_dir}")
 
 if __name__ == "__main__":
