@@ -35,7 +35,7 @@
 
         <!-- Mini Spine -->
         <div 
-          class="absolute top-0 bottom-0 w-[18px] overflow-hidden flex flex-col items-center justify-between py-1 shadow"
+          class="absolute top-0 bottom-0 w-[18px] overflow-hidden flex flex-col items-center justify-between py-1"
           :style="{
             left: 'calc(50% - 9px)',
             transform: 'rotateY(-90deg) translateZ(40px)',
@@ -44,7 +44,6 @@
         >
           <span class="text-[7px] font-bold text-white font-mono">{{ volume.volumeNumber }}</span>
           <span class="text-[6px] text-white [writing-mode:vertical-rl] font-bold truncate">OP</span>
-          <div class="absolute inset-0 spine-emboss pointer-events-none"></div>
         </div>
 
         <!-- Mini Fore-edge pages -->

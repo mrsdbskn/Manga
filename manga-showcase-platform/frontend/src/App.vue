@@ -347,21 +347,24 @@
         :currentPage="currentReadingPage"
         :totalPages="libraryStore.activePages.length"
         :currentMode="progressStore.readMode"
+        :readingDirection="progressStore.readingDirection"
         :isBookmarked="isCurrentPageBookmarked"
         :isVisible="isHudVisible"
         @exit="exitReader"
         @jump-page="jumpToPage"
         @update:currentMode="onReaderModeChanged"
+        @update:readingDirection="onReaderDirectionChanged"
         @toggle-bookmark="toggleCurrentBookmark"
       />
 
       <!-- Dual Reading Engine Views -->
       <div class="flex-1 w-full h-full relative overflow-hidden">
-        <!-- Mode 1: 3D FlipBook (StPageFlip RTL) -->
+        <!-- Mode 1: 3D FlipBook (StPageFlip RTL / LTR) -->
         <FlipBookView 
           v-if="progressStore.readMode === 'flipbook'"
           ref="flipBookRef"
           :pages="libraryStore.activePages"
+          :readingDirection="progressStore.readingDirection"
           :initialPage="currentReadingPage"
           @page-change="onPageChange"
           @toggle-hud="toggleHud"
@@ -519,6 +522,10 @@ function jumpToPage(pageNum) {
 
 function onReaderModeChanged(mode) {
   progressStore.setReadMode(mode);
+}
+
+function onReaderDirectionChanged(dir) {
+  progressStore.setReadingDirection(dir);
 }
 
 function toggleCurrentBookmark() {

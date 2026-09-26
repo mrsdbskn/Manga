@@ -8,13 +8,16 @@ import { defineStore } from 'pinia';
 
 const STORAGE_KEY = 'manga_showcase_reading_progress';
 const PREF_KEY = 'manga_showcase_reader_pref';
+const DIRECTION_KEY = 'manga_showcase_reading_direction';
 
 export const useProgressStore = defineStore('progress', {
   state: () => ({
     // Records keyed by volumeId (e.g. 'one-piece-v01')
     records: JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'),
-    // Preferred reading engine: 'flipbook' (3D StPageFlip RTL) | 'webtoon' (Vertical scroll)
+    // Preferred reading engine: 'flipbook' (3D StPageFlip) | 'webtoon' (Vertical scroll)
     readMode: localStorage.getItem(PREF_KEY) || 'flipbook',
+    // Reading direction: 'rtl' (Authentic Manga Right-to-Left, default) | 'ltr' (Western Left-to-Right)
+    readingDirection: localStorage.getItem(DIRECTION_KEY) || 'rtl',
   }),
 
   getters: {
@@ -135,6 +138,14 @@ export const useProgressStore = defineStore('progress', {
         this.readMode = mode;
         localStorage.setItem(PREF_KEY, mode);
       }
+    },
+
+    /**
+     * Sets reading direction preference ('rtl' or 'ltr').
+     */
+    setReadingDirection(dir) {
+      this.readingDirection = dir === 'ltr' ? 'ltr' : 'rtl';
+      localStorage.setItem(DIRECTION_KEY, this.readingDirection);
     },
 
     /**

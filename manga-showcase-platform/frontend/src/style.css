@@ -103,16 +103,9 @@
   box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.4);
 }
 
-/* Spine embossing curve */
+/* Spine flat display without artificial shadows */
 .spine-emboss {
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0.25) 0%,
-    rgba(0, 0, 0, 0.4) 15%,
-    rgba(255, 255, 255, 0.1) 50%,
-    rgba(0, 0, 0, 0.5) 85%,
-    rgba(0, 0, 0, 0.8) 100%
-  );
+  display: none;
 }
 
 /* Dynamic cover gloss highlight */
@@ -166,13 +159,29 @@
 }
 
 .st-page-flip-container .page {
-  background-color: #000000 !important;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+  background-color: #ffffff;
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.5);
   overflow: hidden;
 }
 
-.st-page-flip-container [class*="stf__"] {
-  background-color: #000000 !important;
+/* Ensure StPageFlip shadow elements remain transparent so their dynamic linear-gradients render smoothly without solid black blocks */
+.st-page-flip-container .stf__outerShadow,
+.st-page-flip-container .stf__hardShadow {
+  background-color: transparent !important;
+}
+
+/* Ensure spine center crease shadow in flipbook reader is completely flat without seam darkening */
+.st-page-flip-container .stf__innerShadow,
+.st-page-flip-container .stf__hardInnerShadow {
+  display: none !important;
+  opacity: 0 !important;
+  background: none !important;
+}
+
+.st-page-flip-container .stf__parent,
+.st-page-flip-container .stf__wrapper,
+.st-page-flip-container .stf__block {
+  background-color: transparent !important;
 }
 
 /* Smooth view transition */

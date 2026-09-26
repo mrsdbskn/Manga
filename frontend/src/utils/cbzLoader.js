@@ -215,19 +215,27 @@ async function splitDoublePageSpread(blob, width, height) {
     } catch (e) {}
 
     if (isSpread && splitResult) {
-      const urlR = URL.createObjectURL(splitResult.blobR);
+      // Spread Parity Alignment:
+      // In dual-page flipbook mode with showCover: true, facing spreads are [pages[1], pages[2]], [pages[3], pages[4]], etc.
+      // The left page is always an ODD 0-index (even 1-based page number).
+      // If pages.length is currently even (and > 0), the next slot would be the right page of the previous spread,
+      // which would split the double spread across two turns. Insert a blank page to ensure both halves open together:
+      if (pages.length % 2 === 0 && pages.length > 0) {
+        pages.push({
+          pageNumber: pages.length + 1,
+          url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1500"><rect width="1000" height="1500" fill="%23ffffff"/></svg>',
+          originalUrl: null,
+          name: 'Blank Endpaper (Spread Alignment)',
+          isBlank: true,
+          isSpread: false,
+        });
+      }
+
       const urlL = URL.createObjectURL(splitResult.blobL);
-      activeBlobUrls.push(urlR, urlL);
+      const urlR = URL.createObjectURL(splitResult.blobR);
+      activeBlobUrls.push(urlL, urlR);
 
-      pages.push({
-        pageNumber: pages.length + 1,
-        url: urlR,
-        originalUrl: blobUrl,
-        name: `${baseName} (Right Spread)`,
-        isSpread: true,
-        spreadPart: 'right',
-      });
-
+      // Left half of illustration -> Left page of book
       pages.push({
         pageNumber: pages.length + 1,
         url: urlL,
@@ -235,6 +243,16 @@ async function splitDoublePageSpread(blob, width, height) {
         name: `${baseName} (Left Spread)`,
         isSpread: true,
         spreadPart: 'left',
+      });
+
+      // Right half of illustration -> Right page of book
+      pages.push({
+        pageNumber: pages.length + 1,
+        url: urlR,
+        originalUrl: blobUrl,
+        name: `${baseName} (Right Spread)`,
+        isSpread: true,
+        spreadPart: 'right',
       });
     } else {
       pages.push({

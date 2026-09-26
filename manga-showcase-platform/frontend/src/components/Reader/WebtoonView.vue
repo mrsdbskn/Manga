@@ -77,8 +77,9 @@ const props = defineProps({
 const emit = defineEmits(['page-change', 'toggle-hud']);
 
 const displayPages = computed(() => {
-  // If smart double spread splitting occurred, skip the left split in Webtoon vertical scroll so the wide panoramic image is displayed once in full width
-  return props.pages.filter(p => !p.isSpread || p.spreadPart !== 'left');
+  // In Webtoon vertical scroll: show wide panoramic double-page spread once in full width (keep left split which holds originalUrl, skip right split).
+  // Also filter out blank endpapers used for flipbook spread alignment.
+  return props.pages.filter(p => !p.isBlank && (!p.isSpread || p.spreadPart !== 'right'));
 });
 
 const containerRef = ref(null);

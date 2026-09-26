@@ -67,15 +67,13 @@
           </div>
 
           <!-- Gloss / Specular Lighting Overlay -->
+          <!-- Front Cover Gloss -->
           <div 
             class="absolute inset-0 cover-gloss"
             :style="{
               opacity: Math.max(0.1, Math.min(0.6, (1 - Math.cos((rotationY * Math.PI) / 180)) * 0.4))
             }"
           ></div>
-
-          <!-- Left Hinge Crease Shadow -->
-          <div class="absolute left-0 top-0 bottom-0 w-3 bg-gradient-to-r from-black/50 via-black/20 to-transparent pointer-events-none"></div>
         </div>
 
         <!-- BACK COVER (180deg) -->
@@ -139,9 +137,9 @@
           <div class="absolute inset-0 bg-gradient-to-tr from-black/40 via-transparent to-white/5 pointer-events-none"></div>
         </div>
 
-        <!-- SPINE (Left Face - Official 2.03cm / 28.8px) -->
+        <!-- SPINE (Left Face - Official 2.03cm / 28.8px - Flat rendering) -->
         <div 
-          class="absolute top-0 bottom-0 w-[28.8px] overflow-hidden flex flex-col justify-between text-center shadow-lg"
+          class="absolute top-0 bottom-0 w-[28.8px] overflow-hidden flex flex-col justify-between text-center"
           :style="{
             left: 'calc(50% - 14.4px)',
             transform: 'rotateY(-90deg) translateZ(90px)',
@@ -180,9 +178,6 @@
               尾田栄一郎
             </div>
           </template>
-
-          <!-- Spine Curvature Texture & Highlight -->
-          <div class="absolute inset-0 spine-emboss pointer-events-none"></div>
         </div>
 
         <!-- FORE-EDGE (Right Face - Paper Pages Block) -->

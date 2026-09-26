@@ -228,6 +228,29 @@
             </span>
           </button>
 
+          <!-- Reading Direction Toggle (Only shown in FlipBook mode) -->
+          <button 
+            v-if="currentMode === 'flipbook'"
+            type="button"
+            @click="toggleDirection"
+            :class="[
+              'px-2.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all md-state-layer border',
+              readingDirection === 'rtl'
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+            ]"
+            :title="readingDirection === 'rtl' ? 'Current: Authentic Manga RTL (Right page 1st). Click for Western LTR' : 'Current: Western LTR (Left page 1st). Click for Manga RTL'"
+          >
+            <span v-if="readingDirection === 'rtl'" class="flex items-center gap-1">
+              <span>🇯🇵</span>
+              <span class="font-bold">RTL</span>
+            </span>
+            <span v-else class="flex items-center gap-1">
+              <span>📖</span>
+              <span class="font-bold">LTR</span>
+            </span>
+          </button>
+
           <!-- Bookmark Toggle -->
           <button 
             type="button"
@@ -289,6 +312,10 @@ const props = defineProps({
     type: String,
     default: 'flipbook',
   },
+  readingDirection: {
+    type: String,
+    default: 'rtl',
+  },
   isBookmarked: {
     type: Boolean,
     default: false,
@@ -303,6 +330,7 @@ const emit = defineEmits([
   'exit',
   'jump-page',
   'update:currentMode',
+  'update:readingDirection',
   'toggle-bookmark',
 ]);
 
@@ -373,6 +401,11 @@ function onAmbientVolumeChange(e) {
 function toggleMode() {
   const nextMode = props.currentMode === 'flipbook' ? 'webtoon' : 'flipbook';
   emit('update:currentMode', nextMode);
+}
+
+function toggleDirection() {
+  const nextDir = props.readingDirection === 'rtl' ? 'ltr' : 'rtl';
+  emit('update:readingDirection', nextDir);
 }
 
 function onPageInputChange(e) {
