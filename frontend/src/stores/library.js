@@ -4,7 +4,14 @@
 
 import { defineStore } from 'pinia';
 import { CANON_SAGAS, getSagaById, getSagaForVolume } from '../utils/sagaData.js';
-import { unpackCbz, loadRemoteCbz, revokeAllocatedBlobs } from '../utils/cbzLoader.js';
+import {
+  unpackCbz,
+  loadRemoteCbz,
+  revokeAllocatedBlobs,
+  deleteVolumeFromCache,
+  getCachedVolumesInfo,
+  clearVolumeCache,
+} from '../utils/cbzLoader.js';
 import { parseMangaMetadata } from '../utils/mangaTitle.js';
 import { useProgressStore } from './progress.js';
 
@@ -37,9 +44,11 @@ export const useLibraryStore = defineStore('library', {
     unpackStatusText: '',
     unpackError: null,
 
-    // UI Drawer and Modal visibility
+    // UI Drawer, Storage and Modal visibility
     historyDrawerOpen: false,
     localDropzoneOpen: false,
+    storageModalOpen: false,
+    cachedStorageInfo: { count: 0, totalBytes: 0, totalMB: '0.0', items: [] },
   }),
 
   getters: {
@@ -176,37 +185,49 @@ export const useLibraryStore = defineStore('library', {
     },
 
     /**
-     * Opens the reader for a specified volume from the catalog.
+     * Resolves the primary download/streaming URL for a given volume.
      */
-    async openReader(volume) {
+    _resolveCbzUrl(volume) {
+      if (!volume) return '';
+      if (volume.cbzUrl) return volume.cbzUrl;
+      if (volume.cbzFile && (volume.cbzFile.startsWith('http://') || volume.cbzFile.startsWith('https://'))) {
+        return volume.cbzFile;
+      }
+      if (this.r2PublicUrl && volume.cbzFile) {
+        return `${this.r2PublicUrl.replace(/\/+$/, '')}/${encodeURIComponent(volume.cbzFile)}`;
+      }
+      if (volume.cbzFile) {
+        return `./comics/${encodeURIComponent(volume.cbzFile)}`;
+      }
+      return `./comics/One Piece - v${String(volume.volumeNumber).padStart(2, '0')} (c${String(volume.chapterStart).padStart(3, '0')}-${String(volume.chapterEnd).padStart(3, '0')}).cbz`;
+    },
+
+    /**
+     * Opens the reader for a specified volume from the catalog.
+     * @param {Object} volume - Volume metadata object
+     * @param {Object} [options] - Options: { forceRedownload: boolean }
+     */
+    async openReader(volume, options = {}) {
       if (!volume) return;
+      const { forceRedownload = false } = options;
 
       this.activeVolume = volume;
       this.isUnpacking = true;
       this.unpackError = null;
       this.unpackProgress = 0;
-      this.unpackStatusText = 'Locating volume archive...';
+      this.unpackStatusText = forceRedownload 
+        ? 'Purging cache & re-downloading fresh volume from R2...' 
+        : 'Locating volume archive...';
 
       try {
-        let cbzUrl = null;
-        if (volume.cbzUrl) {
-          cbzUrl = volume.cbzUrl;
-        } else if (volume.cbzFile && (volume.cbzFile.startsWith('http://') || volume.cbzFile.startsWith('https://'))) {
-          cbzUrl = volume.cbzFile;
-        } else if (this.r2PublicUrl && volume.cbzFile) {
-          cbzUrl = `${this.r2PublicUrl.replace(/\/+$/, '')}/${encodeURIComponent(volume.cbzFile)}`;
-        } else if (volume.cbzFile) {
-          cbzUrl = `./comics/${encodeURIComponent(volume.cbzFile)}`;
-        } else {
-          cbzUrl = `./comics/One Piece - v${String(volume.volumeNumber).padStart(2, '0')} (c${String(volume.chapterStart).padStart(3, '0')}-${String(volume.chapterEnd).padStart(3, '0')}).cbz`;
-        }
+        const cbzUrl = this._resolveCbzUrl(volume);
 
         let result;
         try {
           result = await loadRemoteCbz(cbzUrl, (pct, status) => {
             this.unpackProgress = pct;
             this.unpackStatusText = status;
-          });
+          }, { forceBypassCache: forceRedownload });
         } catch (streamErr) {
           // If initial URL failed and we haven't tried Cloudflare R2 yet, attempt R2 fallback
           const fallbackR2 = (!cbzUrl.startsWith('http') && this.r2PublicUrl && volume.cbzFile)
@@ -219,7 +240,7 @@ export const useLibraryStore = defineStore('library', {
             result = await loadRemoteCbz(fallbackR2, (pct, status) => {
               this.unpackProgress = pct;
               this.unpackStatusText = status;
-            });
+            }, { forceBypassCache: forceRedownload });
           } else {
             throw streamErr;
           }
@@ -240,11 +261,57 @@ export const useLibraryStore = defineStore('library', {
             coverUrl: volume.coverUrl,
           });
         }
+        // Refresh offline storage inventory
+        this.refreshStorageInfo();
       } catch (err) {
         console.error('Failed to open volume archive:', err);
         this.unpackError = `Could not load volume archive: ${err.message}. If this volume has not been packaged yet, drop a local CBZ using the Local Reader.`;
       } finally {
         this.isUnpacking = false;
+      }
+    },
+
+    /**
+     * Purges the cached copy of the active (or passed) volume and re-downloads fresh from Cloudflare R2.
+     */
+    async redownloadVolume(volume = null) {
+      const vol = volume || this.activeVolume;
+      if (!vol) return;
+      return this.openReader(vol, { forceRedownload: true });
+    },
+
+    /**
+     * Deletes a specific volume from browser offline storage.
+     */
+    async deleteCachedVolume(volume) {
+      if (!volume) return;
+      const url = this._resolveCbzUrl(volume);
+      await deleteVolumeFromCache(url);
+      await this.refreshStorageInfo();
+    },
+
+    /**
+     * Clears all cached volume archives from browser CacheStorage.
+     */
+    async clearAllDownloadedVolumes() {
+      await clearVolumeCache();
+      await this.refreshStorageInfo();
+    },
+
+    /**
+     * Refreshes the cached storage metrics (count, bytes, MB).
+     */
+    async refreshStorageInfo() {
+      this.cachedStorageInfo = await getCachedVolumesInfo();
+    },
+
+    /**
+     * Toggles the offline storage management modal.
+     */
+    toggleStorageModal() {
+      this.storageModalOpen = !this.storageModalOpen;
+      if (this.storageModalOpen) {
+        this.refreshStorageInfo();
       }
     },
 

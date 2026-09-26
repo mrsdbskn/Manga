@@ -6,6 +6,7 @@
     <!-- StPageFlip Book Container -->
     <div class="st-page-flip-container relative flex items-center justify-center w-full h-full max-w-6xl max-h-[96vh] p-0 sm:p-2">
       <div 
+        :key="`manga-book-${readingDirection}-${renderKey}`"
         ref="bookContainerRef" 
         class="shadow-2xl rounded-none"
         id="manga-stpageflip-book"
@@ -93,6 +94,8 @@ const emit = defineEmits(['page-change', 'toggle-hud']);
 
 const bookContainerRef = ref(null);
 let pageFlipInstance = null;
+const renderKey = ref(0);
+const activePageNumber = ref(props.initialPage || 1);
 
 /**
  * Transforms the linear pages array for Authentic Japanese Manga Right-to-Left (RTL) reading.
@@ -152,16 +155,25 @@ const displayPages = computed(() => {
   return transformPagesForRtl(props.pages);
 });
 
-function initPageFlip() {
-  if (!bookContainerRef.value || !displayPages.value || displayPages.value.length === 0) return;
-
-  // Cleanup old instance if re-initializing
+function cleanupPageFlip() {
   if (pageFlipInstance) {
     try {
-      pageFlipInstance.destroy();
-    } catch (e) {}
+      if (typeof pageFlipInstance.getUI === 'function' && pageFlipInstance.getUI()) {
+        pageFlipInstance.getUI().destroy();
+      } else if (typeof pageFlipInstance.clear === 'function') {
+        pageFlipInstance.clear();
+      }
+    } catch (e) {
+      console.warn('PageFlip cleanup notice:', e);
+    }
     pageFlipInstance = null;
   }
+}
+
+function initPageFlip(targetPageNum = null) {
+  if (!bookContainerRef.value || !displayPages.value || displayPages.value.length === 0) return;
+
+  cleanupPageFlip();
 
   // Calculate responsive dimensions based on true digital manga page aspect ratio (1 : 1.501)
   const vw = window.innerWidth;
@@ -187,11 +199,18 @@ function initPageFlip() {
     }
   }
 
-  // Calculate start index in displayPages based on initialPage
+  // Calculate start index in displayPages based on targetPageNum or initialPage
+  const pageToOpen = targetPageNum !== null ? targetPageNum : (activePageNumber.value || props.initialPage || 1);
   let startIdx = 0;
-  if (props.initialPage > 1) {
-    const foundIdx = displayPages.value.findIndex(p => p.pageNumber === props.initialPage);
-    startIdx = foundIdx !== -1 ? foundIdx : Math.max(0, props.initialPage - 1);
+  if (pageToOpen > 1) {
+    const foundIdx = displayPages.value.findIndex(p => p.pageNumber === pageToOpen);
+    startIdx = foundIdx !== -1 ? foundIdx : Math.max(0, pageToOpen - 1);
+  }
+
+  const pageElements = bookContainerRef.value.querySelectorAll('.page');
+  if (pageElements.length === 0) {
+    console.warn('No page elements found in container, deferring StPageFlip init');
+    return;
   }
 
   try {
@@ -211,7 +230,6 @@ function initPageFlip() {
       flippingTime: 450,
     });
 
-    const pageElements = bookContainerRef.value.querySelectorAll('.page');
     pageFlipInstance.loadFromHTML(pageElements);
 
     // Event listener for page flips
@@ -220,12 +238,14 @@ function initPageFlip() {
       const currentZeroIdx = e.data;
       const curPageObj = displayPages.value[currentZeroIdx];
       const pageNum = curPageObj ? curPageObj.pageNumber : currentZeroIdx + 1;
+      activePageNumber.value = pageNum;
       emit('page-change', pageNum);
       playPageFlipSound();
     });
 
     // Initial sync
-    emit('page-change', Math.max(1, props.initialPage));
+    activePageNumber.value = pageToOpen;
+    emit('page-change', Math.max(1, pageToOpen));
   } catch (err) {
     console.error('Error initializing StPageFlip:', err);
   }
@@ -276,15 +296,27 @@ function onKeydown(e) {
 }
 
 watch(() => props.readingDirection, () => {
+  cleanupPageFlip();
+  renderKey.value++;
   nextTick(() => {
-    initPageFlip();
+    initPageFlip(activePageNumber.value);
   });
 });
 
 watch(() => props.pages, () => {
+  cleanupPageFlip();
+  activePageNumber.value = props.initialPage || 1;
+  renderKey.value++;
   nextTick(() => {
-    initPageFlip();
+    initPageFlip(props.initialPage || 1);
   });
+});
+
+watch(() => props.initialPage, (newPage) => {
+  if (newPage && newPage !== activePageNumber.value) {
+    activePageNumber.value = newPage;
+    jumpToPage(newPage);
+  }
 });
 
 onMounted(() => {
@@ -306,11 +338,6 @@ function onResize() {
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeydown);
   window.removeEventListener('resize', onResize);
-  if (pageFlipInstance) {
-    try {
-      pageFlipInstance.destroy();
-    } catch (e) {}
-    pageFlipInstance = null;
-  }
+  cleanupPageFlip();
 });
 </script>

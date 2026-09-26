@@ -52,6 +52,21 @@
           <div class="flex items-center gap-2 md:hidden">
             <button 
               type="button"
+              @click="libraryStore.toggleStorageModal()"
+              class="p-2 rounded-full bg-white/[0.06] text-slate-300 hover:text-white relative"
+              title="Manage Offline Downloads"
+            >
+              <svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" x2="12" y1="15" y2="3" />
+              </svg>
+              <span v-if="libraryStore.cachedStorageInfo?.count > 0" class="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 text-[9px] font-bold rounded-full flex items-center justify-center text-white">
+                {{ libraryStore.cachedStorageInfo.count }}
+              </span>
+            </button>
+            <button 
+              type="button"
               @click="libraryStore.toggleLocalDropzone()"
               class="p-2 rounded-full bg-white/[0.06] text-slate-300 hover:text-white"
               title="Open Local CBZ"
@@ -106,6 +121,24 @@
 
         <!-- Right: Actions, Local CBZ, History & View Switcher -->
         <div class="hidden md:flex items-center gap-3">
+          <!-- Offline Storage Trigger -->
+          <button 
+            type="button"
+            @click="libraryStore.toggleStorageModal()"
+            class="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-white/[0.06] hover:bg-white/[0.12] text-slate-200 border border-white/10 flex items-center gap-2 transition-all md-state-layer relative"
+            title="Manage Offline Downloads & Storage Cache"
+          >
+            <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" x2="12" y1="15" y2="3" />
+            </svg>
+            <span>Downloads</span>
+            <span v-if="libraryStore.cachedStorageInfo?.count > 0" class="px-1.5 py-0.2 rounded-full bg-emerald-500/80 text-[10px] font-bold text-white font-mono">
+              {{ libraryStore.cachedStorageInfo.count }}
+            </span>
+          </button>
+
           <!-- Local Dropzone Trigger -->
           <button 
             type="button"
@@ -363,6 +396,7 @@
         <FlipBookView 
           v-if="progressStore.readMode === 'flipbook'"
           ref="flipBookRef"
+          :key="`flipbook-${libraryStore.activeVolume?.id || 'vol'}-${progressStore.readingDirection}`"
           :pages="libraryStore.activePages"
           :readingDirection="progressStore.readingDirection"
           :initialPage="currentReadingPage"
@@ -374,6 +408,7 @@
         <WebtoonView 
           v-else
           ref="webtoonRef"
+          :key="`webtoon-${libraryStore.activeVolume?.id || 'vol'}`"
           :pages="libraryStore.activePages"
           :initialPage="currentReadingPage"
           @page-change="onPageChange"
@@ -450,11 +485,16 @@
       @close="libraryStore.historyDrawerOpen = false" 
     />
 
+    <OfflineStorageModal 
+      :isOpen="libraryStore.storageModalOpen" 
+      @close="libraryStore.storageModalOpen = false" 
+    />
+
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useLibraryStore } from './stores/library.js';
 import { useProgressStore } from './stores/progress.js';
 
@@ -467,6 +507,7 @@ import WebtoonView from './components/Reader/WebtoonView.vue';
 import ReaderControls from './components/Reader/ReaderControls.vue';
 import LocalDropzone from './components/Reader/LocalDropzone.vue';
 import HistoryDrawer from './components/UI/HistoryDrawer.vue';
+import OfflineStorageModal from './components/Dashboard/OfflineStorageModal.vue';
 import ProgressBarMD3 from './components/UI/ProgressBarMD3.vue';
 
 const libraryStore = useLibraryStore();
@@ -477,6 +518,18 @@ const webtoonRef = ref(null);
 const isHudVisible = ref(true);
 
 const currentReadingPage = ref(1);
+
+// Sync reading page when switching volumes so it resumes from that volume's own progress (or page 1)
+watch(
+  () => libraryStore.activeVolume?.id,
+  (newId, oldId) => {
+    if (newId && newId !== oldId) {
+      const saved = progressStore.getProgressForVolume(newId);
+      currentReadingPage.value = (saved && saved.lastPage && saved.lastPage > 0) ? saved.lastPage : 1;
+    }
+  },
+  { immediate: true }
+);
 
 const isCurrentPageBookmarked = computed(() => {
   if (!libraryStore.activeVolume) return false;
@@ -540,6 +593,7 @@ function toggleHud() {
 
 function exitReader() {
   libraryStore.closeReader();
+  currentReadingPage.value = 1;
 }
 
 function openDropzoneFromError() {
@@ -575,5 +629,6 @@ const ambientParticles = Array.from({ length: 16 }, (_, i) => ({
 
 onMounted(() => {
   libraryStore.loadCatalog();
+  libraryStore.refreshStorageInfo();
 });
 </script>

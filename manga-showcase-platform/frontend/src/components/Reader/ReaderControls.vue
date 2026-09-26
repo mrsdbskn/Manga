@@ -251,6 +251,18 @@
             </span>
           </button>
 
+          <!-- Re-download / Update Volume from R2 -->
+          <button 
+            type="button"
+            @click="onRedownloadVolume"
+            class="p-2 rounded-full hover:bg-white/10 text-slate-400 hover:text-sky-300 transition-colors md-state-layer"
+            title="Re-download Volume (Purge offline cache & fetch latest version from R2)"
+          >
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+            </svg>
+          </button>
+
           <!-- Bookmark Toggle -->
           <button 
             type="button"
@@ -406,6 +418,13 @@ function toggleMode() {
 function toggleDirection() {
   const nextDir = props.readingDirection === 'rtl' ? 'ltr' : 'rtl';
   emit('update:readingDirection', nextDir);
+}
+
+async function onRedownloadVolume() {
+  const ok = confirm(`Re-download this volume from Cloudflare R2? This will replace your local cached copy with the latest update.`);
+  if (ok) {
+    await libraryStore.redownloadVolume();
+  }
 }
 
 function onPageInputChange(e) {

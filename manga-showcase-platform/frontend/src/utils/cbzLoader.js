@@ -285,18 +285,84 @@ const CACHE_NAME = 'one-piece-manga-cbz-v1';
  * Checks if a remote volume URL is already cached in browser CacheStorage.
  */
 export async function isVolumeCached(url) {
-  if (!('caches' in window)) return false;
+  if (!('caches' in window) || !url) return false;
   try {
     const cache = await caches.open(CACHE_NAME);
     const match = await cache.match(url);
-    return !!match;
+    if (match) return true;
+    const baseName = url.split('/').pop();
+    const keys = await cache.keys();
+    return keys.some(k => k.url.endsWith(baseName) || k.url.includes(encodeURIComponent(baseName)));
   } catch {
     return false;
   }
 }
 
 /**
- * Clears the offline manga volume cache.
+ * Deletes a specific volume archive from the CacheStorage.
+ */
+export async function deleteVolumeFromCache(url) {
+  if (!('caches' in window) || !url) return false;
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    let deleted = await cache.delete(url);
+    const baseName = url.split('/').pop();
+    if (baseName) {
+      const keys = await cache.keys();
+      for (const req of keys) {
+        if (req.url.endsWith(baseName) || req.url.includes(encodeURIComponent(baseName))) {
+          await cache.delete(req);
+          deleted = true;
+        }
+      }
+    }
+    return deleted;
+  } catch (e) {
+    console.warn('Error deleting volume from cache:', e);
+    return false;
+  }
+}
+
+/**
+ * Returns metadata about all manga volumes currently stored in offline cache.
+ */
+export async function getCachedVolumesInfo() {
+  if (!('caches' in window)) {
+    return { count: 0, totalBytes: 0, totalMB: '0.0', items: [] };
+  }
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    const keys = await cache.keys();
+    let totalBytes = 0;
+    const items = [];
+
+    for (const req of keys) {
+      const res = await cache.match(req);
+      const len = res ? parseInt(res.headers.get('Content-Length') || '0', 10) : 0;
+      totalBytes += len;
+      const rawName = req.url.split('/').pop() || 'volume.cbz';
+      items.push({
+        url: req.url,
+        name: decodeURIComponent(rawName),
+        sizeBytes: len,
+        sizeMB: (len / (1024 * 1024)).toFixed(1),
+      });
+    }
+
+    return {
+      count: items.length,
+      totalBytes,
+      totalMB: (totalBytes / (1024 * 1024)).toFixed(1),
+      items,
+    };
+  } catch (e) {
+    console.warn('Error querying cached volumes info:', e);
+    return { count: 0, totalBytes: 0, totalMB: '0.0', items: [] };
+  }
+}
+
+/**
+ * Clears the entire offline manga volume cache.
  */
 export async function clearVolumeCache() {
   if ('caches' in window) {
@@ -313,10 +379,16 @@ export async function clearVolumeCache() {
 /**
  * Loads a remote CBZ file via fetch with real-time download speed/progress tracking
  * and automatic CacheStorage offline caching.
+ * Set `options.forceBypassCache = true` to purge existing cached copy and stream fresh.
  */
-export async function loadRemoteCbz(url, onProgress = () => {}) {
-  // 1. Check instant offline cache first
-  if ('caches' in window) {
+export async function loadRemoteCbz(url, onProgress = () => {}, options = {}) {
+  const { forceBypassCache = false } = options;
+
+  // 1. If forceBypassCache requested, purge existing cache first
+  if (forceBypassCache) {
+    await deleteVolumeFromCache(url);
+  } else if ('caches' in window) {
+    // Check instant offline cache
     try {
       const cache = await caches.open(CACHE_NAME);
       const cachedResponse = await cache.match(url);
@@ -330,8 +402,9 @@ export async function loadRemoteCbz(url, onProgress = () => {}) {
     }
   }
 
-  onProgress(5, 'Connecting to manga stream...');
-  const response = await fetch(url);
+  onProgress(5, forceBypassCache ? 'Re-downloading latest volume from R2...' : 'Connecting to manga stream...');
+  const fetchOptions = forceBypassCache ? { cache: 'reload' } : {};
+  const response = await fetch(url, fetchOptions);
   if (!response.ok) {
     throw new Error(`Failed to stream volume: HTTP ${response.status} ${response.statusText}`);
   }
