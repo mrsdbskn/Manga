@@ -109,8 +109,57 @@ def get_r2_client(config: Optional[Dict[str, str]] = None):
     )
 
 
+# Cloudflare R2 Free Tier: 10 GB-months of stored data per month included at $0.00
+R2_FREE_TIER_LIMIT_BYTES = 10 * 1024 * 1024 * 1024  # 10.0 GiB (10,737,418,240 bytes)
+
+
+class StorageLimitExceededError(Exception):
+    """Raised when an R2 upload operation would exceed the free tier storage limit."""
+    def __init__(self, message: str, storage_info: Dict[str, Any]):
+        super().__init__(message)
+        self.storage_info = storage_info
+
+
+def check_r2_storage_limit(
+    remote_inventory: Dict[str, int],
+    files_to_upload: List[Tuple[Path, str]],
+    limit_bytes: int = R2_FREE_TIER_LIMIT_BYTES,
+) -> Dict[str, Any]:
+    """
+    Calculates current, incoming, and projected Cloudflare R2 storage usage.
+    Returns metrics including bytes, gigabytes, percentage, and excess amounts.
+    """
+    current_bytes = sum(remote_inventory.values())
+    projected_inventory = dict(remote_inventory)
+    incoming_bytes = 0
+    for local_fp, key in files_to_upload:
+        sz = local_fp.stat().st_size
+        incoming_bytes += sz
+        projected_inventory[key] = sz
+
+    projected_bytes = sum(projected_inventory.values())
+    will_exceed = projected_bytes > limit_bytes
+    excess_bytes = max(0, projected_bytes - limit_bytes)
+
+    return {
+        "current_bytes": current_bytes,
+        "current_gb": current_bytes / (1024 ** 3),
+        "incoming_bytes": incoming_bytes,
+        "incoming_gb": incoming_bytes / (1024 ** 3),
+        "projected_bytes": projected_bytes,
+        "projected_gb": projected_bytes / (1024 ** 3),
+        "limit_bytes": limit_bytes,
+        "limit_gb": limit_bytes / (1024 ** 3),
+        "usage_pct": (projected_bytes / limit_bytes) * 100 if limit_bytes else 0,
+        "current_pct": (current_bytes / limit_bytes) * 100 if limit_bytes else 0,
+        "will_exceed": will_exceed,
+        "excess_bytes": excess_bytes,
+        "excess_gb": excess_bytes / (1024 ** 3),
+    }
+
+
 def test_r2_connection(config: Optional[Dict[str, str]] = None) -> Tuple[bool, str]:
-    """Tests connection to the Cloudflare R2 bucket."""
+    """Tests connection to the Cloudflare R2 bucket and inspects free tier storage usage."""
     cfg = config or load_r2_config()
     bucket = cfg.get("bucket_name")
     if not bucket:
@@ -118,9 +167,12 @@ def test_r2_connection(config: Optional[Dict[str, str]] = None) -> Tuple[bool, s
 
     try:
         s3 = get_r2_client(cfg)
-        # Try listing up to 1 object to verify bucket access and permissions
-        res = s3.list_objects_v2(Bucket=bucket, MaxKeys=1)
-        return True, f"Successfully connected to Cloudflare R2 bucket '{bucket}'!"
+        remote_objs = list_remote_r2_objects(cfg)
+        total_bytes = sum(remote_objs.values())
+        used_gb = total_bytes / (1024 ** 3)
+        limit_gb = R2_FREE_TIER_LIMIT_BYTES / (1024 ** 3)
+        pct = (total_bytes / R2_FREE_TIER_LIMIT_BYTES) * 100
+        return True, f"✅ Connected to '{bucket}'! Free tier used: {used_gb:.2f} GB / {limit_gb:.0f} GB ({pct:.1f}%, {len(remote_objs)} files)"
     except Exception as e:
         return False, f"Cloudflare R2 connection failed: {e}"
 
@@ -252,24 +304,29 @@ def list_remote_r2_objects(config: Optional[Dict[str, str]] = None) -> Dict[str,
 
 
 def sync_comics_folder_to_r2(
-    source_dir: str | Path = DEFAULT_COMICS_DIR,
+    source_dir: Optional[str | Path] = None,
+    comics_dir: Optional[str | Path] = None,
     config: Optional[Dict[str, str]] = None,
     sync_catalog_json: bool = True,
     only_volumes: bool = False,
     progress_callback: Optional[Callable[[float, str], None]] = None,
     log_callback: Callable[[str], None] = print,
     cancel_flag: Optional[Callable[[], bool]] = None,
+    max_storage_bytes: int = R2_FREE_TIER_LIMIT_BYTES,
+    allow_exceed_free_limit: bool = False,
 ) -> Dict[str, Any]:
     """
     Syncs local manga CBZ files and covers to Cloudflare R2.
     Skips any files already present on R2 with identical size.
+    Checks if new uploads would exceed the 10 GB free tier limit to prevent unexpected charges.
     Updates frontend/public/comics/index.json with the public R2 streaming URLs.
     """
+    actual_dir = source_dir if source_dir is not None else (comics_dir if comics_dir is not None else DEFAULT_COMICS_DIR)
+    src_path = Path(actual_dir).resolve()
     cfg = config or load_r2_config()
     bucket = cfg.get("bucket_name")
     public_base = cfg.get("public_url", "").rstrip("/")
 
-    src_path = Path(source_dir).resolve()
     if not src_path.exists():
         raise FileNotFoundError(f"Source folder does not exist: {src_path}")
 
@@ -320,7 +377,26 @@ def sync_comics_folder_to_r2(
         else:
             to_upload.append((local_fp, key))
 
-    log_callback(f"Sync inventory: {len(to_upload)} file(s) to upload, {skipped_count} already up-to-date in R2.\n")
+    log_callback(f"Sync inventory: {len(to_upload)} file(s) to upload, {skipped_count} already up-to-date in R2.")
+
+    # Storage Check: Guard against exceeding the 10 GB free tier limit
+    storage_check = check_r2_storage_limit(remote_inventory, to_upload, limit_bytes=max_storage_bytes)
+    log_callback(f"\n[Storage Check] Cloudflare R2 10 GB Free Tier:")
+    log_callback(f"   • Current in R2: {storage_check['current_gb']:.2f} GB / 10.00 GB ({storage_check['current_pct']:.1f}%)")
+    log_callback(f"   • To Upload:     {storage_check['incoming_gb']:.2f} GB ({len(to_upload)} files)")
+    log_callback(f"   • Projected:     {storage_check['projected_gb']:.2f} GB / 10.00 GB ({storage_check['usage_pct']:.1f}%)\n")
+
+    if storage_check["will_exceed"]:
+        err_msg = (
+            f"Sync halted! Uploading {len(to_upload)} files ({storage_check['incoming_gb']:.2f} GB) "
+            f"would push R2 storage to {storage_check['projected_gb']:.2f} GB, exceeding the 10 GB free limit by {storage_check['excess_gb']:.2f} GB!\n"
+            f"Upload stopped to protect against unexpected Cloudflare billing charges."
+        )
+        log_callback(f"\n⚠️  {err_msg}\n")
+        if not allow_exceed_free_limit:
+            raise StorageLimitExceededError(err_msg, storage_check)
+        else:
+            log_callback("⚠️  Proceeding anyway as 'allow_exceed_free_limit' is set to True.\n")
 
     uploaded_count = 0
     failed: List[Tuple[str, str]] = []

@@ -116,6 +116,7 @@ try:
         configure_r2_cors,
         sync_comics_folder_to_r2,
         upload_file_to_r2,
+        StorageLimitExceededError,
     )
 except ImportError:
     try:
@@ -126,6 +127,7 @@ except ImportError:
             configure_r2_cors,
             sync_comics_folder_to_r2,
             upload_file_to_r2,
+            StorageLimitExceededError,
         )
     except ImportError:
         load_r2_config = None
@@ -134,6 +136,7 @@ except ImportError:
         configure_r2_cors = None
         sync_comics_folder_to_r2 = None
         upload_file_to_r2 = None
+        StorageLimitExceededError = Exception
 
 try:
     from tools.sync_r2_catalog import sync_catalog
@@ -1001,7 +1004,7 @@ class MangaOrganizerApp:
                     self.root.after(0, lambda: self.progress_bar.set(0.5 + pct * 0.5))
 
                 r2_res = sync_comics_folder_to_r2(
-                    comics_dir=out,
+                    source_dir=out,
                     only_volumes=True,
                     sync_catalog_json=True,
                     progress_callback=on_r2_prog,
@@ -1017,6 +1020,23 @@ class MangaOrganizerApp:
                     f"• R2 Skipped: {r2_res['skipped']} (already synced)\n\n"
                     f"Showcase catalog updated with live Cloudflare streaming URLs!"
                 )
+            except StorageLimitExceededError as se:
+                self.log(f"\n[Free Tier Limit Exceeded] {se}")
+                info = getattr(se, 'storage_info', {})
+                current_gb = info.get('current_gb', 0)
+                incoming_gb = info.get('incoming_gb', 0)
+                projected_gb = info.get('projected_gb', 0)
+                excess_gb = info.get('excess_gb', 0)
+                self.root.after(0, lambda: messagebox.showwarning(
+                    "Cloudflare R2 10 GB Free Tier Limit",
+                    f"⚠️ Upload Aborted: Exceeds 10 GB Free Tier Limit!\n\n"
+                    f"• Current R2 Usage: {current_gb:.2f} GB\n"
+                    f"• Incoming Upload:  {incoming_gb:.2f} GB\n"
+                    f"• Projected Total:  {projected_gb:.2f} GB\n"
+                    f"• Excess over 10GB: {excess_gb:.2f} GB\n\n"
+                    f"Sync was automatically stopped to prevent unexpected Cloudflare billing charges.\n"
+                    f"To free up space, delete older archives from your R2 bucket or reduce the upload batch."
+                ))
             except Exception as e:
                 self.log(f"ERROR: {e}")
                 messagebox.showerror("Pipeline Failed", str(e))
@@ -1464,6 +1484,23 @@ class MangaOrganizerApp:
                         f"• Failed: {len(summary['failed'])}\n\n"
                         f"Manga showcase index.json updated."
                     )
+                except StorageLimitExceededError as se:
+                    self.log(f"\n[Free Tier Limit Exceeded] {se}")
+                    info = getattr(se, 'storage_info', {})
+                    current_gb = info.get('current_gb', 0)
+                    incoming_gb = info.get('incoming_gb', 0)
+                    projected_gb = info.get('projected_gb', 0)
+                    excess_gb = info.get('excess_gb', 0)
+                    self.root.after(0, lambda: messagebox.showwarning(
+                        "Cloudflare R2 10 GB Free Tier Limit",
+                        f"⚠️ Upload Aborted: Exceeds 10 GB Free Tier Limit!\n\n"
+                        f"• Current R2 Usage: {current_gb:.2f} GB\n"
+                        f"• Incoming Upload:  {incoming_gb:.2f} GB\n"
+                        f"• Projected Total:  {projected_gb:.2f} GB\n"
+                        f"• Excess over 10GB: {excess_gb:.2f} GB\n\n"
+                        f"Sync was automatically stopped to prevent unexpected Cloudflare billing charges.\n"
+                        f"To free up space, delete older archives from your R2 bucket or reduce the upload batch."
+                    ))
                 except Exception as e:
                     self.log(f"R2 Sync Error: {e}")
                     messagebox.showerror("R2 Sync Error", str(e))

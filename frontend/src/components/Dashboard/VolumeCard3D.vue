@@ -6,17 +6,17 @@
     <!-- 3D Perspective Stage -->
     <div 
       ref="stageRef"
-      class="perspective-1200 w-[210px] h-[300px] flex items-center justify-center cursor-grab active:cursor-grabbing relative py-4"
+      class="perspective-1200 w-[210px] h-[300px] flex items-center justify-center cursor-grab active:cursor-grabbing relative py-4 touch-none select-none"
       @pointerdown="onPointerDown"
-      @dblclick="resetRotation"
-      title="Drag to spin 360° • Double-click to reset"
+      @dblclick="onDoubleTap"
+      title="Drag to spin 360° • Swipe fast to flick • Double-tap to flip/reset"
     >
       <!-- 3D Book Container with Dynamic Rotation (Official 12.7 x 2.03 x 19.05 cm) -->
       <div 
-        class="preserve-3d relative w-[180px] h-[270px] transition-transform will-change-transform"
+        class="preserve-3d relative w-[180px] h-[270px] will-change-transform"
         :style="{
           transform: `rotateY(${rotationY}deg) rotateX(${rotationX}deg)`,
-          transition: isDragging ? 'none' : 'transform 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+          transition: isDragging || isFlicking ? 'none' : 'transform 0.45s cubic-bezier(0.19, 1, 0.22, 1)',
         }"
       >
         <!-- FRONT COVER -->
@@ -214,12 +214,12 @@
       <transition name="fade">
         <div 
           v-if="!hasInteracted"
-          class="absolute bottom-1 bg-black/60 backdrop-blur-md border border-white/10 text-[9px] text-slate-300 px-2 py-0.5 rounded-full pointer-events-none flex items-center gap-1 shadow-sm"
+          class="absolute bottom-1 bg-black/75 backdrop-blur-md border border-white/10 text-[9px] text-slate-300 px-2.5 py-0.5 rounded-full pointer-events-none flex items-center gap-1.5 shadow-sm"
         >
           <svg class="w-2.5 h-2.5 text-sky-400 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 12a9 9 0 1 1-6.219-8.56" />
           </svg>
-          <span>Drag to spin 360°</span>
+          <span>Drag or flick 360° • Double-tap to flip</span>
         </div>
       </transition>
     </div>
@@ -304,11 +304,12 @@ const formattedVolumeTitle = computed(() => {
   return `Vol. ${vNum} - ${rawTitle}`;
 });
 
-// 3D Physics & Drag Engine State
+// 3D Physics, Touch & Flick Engine State
 const stageRef = ref(null);
 const rotationY = ref(-22); // Default isometric aesthetic angle showing cover and right spine
 const rotationX = ref(0);
 const isDragging = ref(false);
+const isFlicking = ref(false);
 const hasInteracted = ref(false);
 
 let startX = 0;
@@ -316,83 +317,174 @@ let startY = 0;
 let initialRotY = -22;
 let initialRotX = 0;
 let lastPointerX = 0;
-let velocityX = 0;
+let lastPointerTime = 0;
+let velocityHistory = [];
+let dragDistance = 0;
+let lastTapTime = 0;
+let flickVelocity = 0;
 let rafId = null;
 
 function onPointerDown(e) {
   isDragging.value = true;
+  isFlicking.value = false;
   hasInteracted.value = true;
   if (rafId) cancelAnimationFrame(rafId);
 
+  // Prevent unwanted page scrolling during 3D book interaction
+  e.preventDefault();
+
+  try {
+    e.currentTarget?.setPointerCapture?.(e.pointerId);
+  } catch (_) {}
+
+  const now = performance.now();
   startX = e.clientX;
   startY = e.clientY;
   lastPointerX = e.clientX;
+  lastPointerTime = now;
   initialRotY = rotationY.value;
   initialRotX = rotationX.value;
+  velocityHistory = [];
+  dragDistance = 0;
 
-  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointermove', onPointerMove, { passive: false });
   window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('pointercancel', onPointerCancel);
 }
 
 function onPointerMove(e) {
   if (!isDragging.value) return;
+  e.preventDefault();
 
+  const now = performance.now();
   const deltaX = e.clientX - startX;
   const deltaY = e.clientY - startY;
+  dragDistance = Math.hypot(deltaX, deltaY);
 
-  // Calculate velocity for inertia release
-  velocityX = e.clientX - lastPointerX;
-  lastPointerX = e.clientX;
+  // Track velocity over rolling time window (last 100ms)
+  const dt = now - lastPointerTime;
+  if (dt > 6) {
+    const dx = e.clientX - lastPointerX;
+    const v = dx / dt; // pixels per ms
+    velocityHistory.push({ v, t: now });
+    if (velocityHistory.length > 5) velocityHistory.shift();
+    lastPointerX = e.clientX;
+    lastPointerTime = now;
+  }
 
-  // 360° horizontal spin with sensitivity
-  rotationY.value = (initialRotY + deltaX * 0.9) % 360;
+  // Responsive 1.4x multiplier: nimble, lightweight, and natural on high-density mobile screens
+  rotationY.value = (initialRotY + deltaX * 1.4) % 360;
 
   // Subtle vertical tilt clamped between -15° and +15°
-  const tilt = initialRotX - deltaY * 0.25;
+  const tilt = initialRotX - deltaY * 0.22;
   rotationX.value = Math.max(-15, Math.min(15, tilt));
 }
 
-function onPointerUp() {
+function onPointerUp(e) {
   if (!isDragging.value) return;
   isDragging.value = false;
 
   window.removeEventListener('pointermove', onPointerMove);
   window.removeEventListener('pointerup', onPointerUp);
+  window.removeEventListener('pointercancel', onPointerCancel);
 
-  // Apply smooth inertia damping
-  applyInertia();
+  try {
+    e.currentTarget?.releasePointerCapture?.(e.pointerId);
+  } catch (_) {}
+
+  const now = performance.now();
+
+  // If minimal movement, check for tap / double tap
+  if (dragDistance < 8) {
+    const timeSinceLastTap = now - lastTapTime;
+    lastTapTime = now;
+    if (timeSinceLastTap < 330) {
+      onDoubleTap();
+      return;
+    }
+  }
+
+  // Calculate release velocity from the rolling history
+  const recentSamples = velocityHistory.filter(s => now - s.t < 120);
+  let avgVelocity = 0;
+  if (recentSamples.length > 0) {
+    const sum = recentSamples.reduce((acc, cur) => acc + cur.v, 0);
+    avgVelocity = sum / recentSamples.length;
+  }
+
+  // If swiped fast (flick momentum):
+  if (Math.abs(avgVelocity) > 0.16) {
+    isFlicking.value = true;
+    flickVelocity = avgVelocity * 18;
+    // Cap maximum flick angular velocity to keep motion comfortable
+    flickVelocity = Math.max(-32, Math.min(32, flickVelocity));
+    startFlickInertia();
+  } else {
+    springRelaxTilt();
+  }
 }
 
-function applyInertia() {
-  if (Math.abs(velocityX) > 0.3) {
-    rotationY.value = (rotationY.value + velocityX * 0.8) % 360;
-    velocityX *= 0.92; // Friction factor
-    // Subtle tilt relaxation
-    rotationX.value *= 0.88;
-    rafId = requestAnimationFrame(applyInertia);
+function onPointerCancel(e) {
+  onPointerUp(e);
+}
+
+function startFlickInertia() {
+  if (Math.abs(flickVelocity) > 0.15) {
+    rotationY.value = (rotationY.value + flickVelocity) % 360;
+    flickVelocity *= 0.935; // Friction factor
+    rotationX.value *= 0.88; // Tilt relaxation
+    rafId = requestAnimationFrame(startFlickInertia);
   } else {
-    // Snap tilt back to 0
+    isFlicking.value = false;
+    flickVelocity = 0;
+    springRelaxTilt();
+  }
+}
+
+function springRelaxTilt() {
+  if (Math.abs(rotationX.value) > 0.3) {
+    rotationX.value *= 0.82;
+    rafId = requestAnimationFrame(springRelaxTilt);
+  } else {
+    rotationX.value = 0;
+  }
+}
+
+function onDoubleTap() {
+  hasInteracted.value = true;
+  isFlicking.value = false;
+  if (rafId) cancelAnimationFrame(rafId);
+
+  // Subtle mobile haptic feedback if supported
+  if (typeof navigator !== 'undefined' && navigator.vibrate) {
+    try { navigator.vibrate(15); } catch (_) {}
+  }
+
+  // Normalize current angle into [-180, 180]
+  let norm = ((rotationY.value % 360) + 360) % 360;
+  if (norm > 180) norm -= 360;
+
+  // If not near default front (-22deg), reset smoothly to front
+  // If already at front (-22deg), flip to back (158deg)
+  // If at back, flip back to front
+  if (Math.abs(norm - (-22)) > 28 && Math.abs(norm - 158) > 28) {
+    rotationY.value = -22;
+    rotationX.value = 0;
+  } else if (Math.abs(norm - (-22)) <= 28) {
+    rotationY.value = 158;
+    rotationX.value = 0;
+  } else {
+    rotationY.value = -22;
     rotationX.value = 0;
   }
 }
 
 function resetRotation() {
-  rotationY.value = -22;
-  rotationX.value = 0;
-  velocityX = 0;
+  onDoubleTap();
 }
 
 function toggleFlip() {
-  hasInteracted.value = true;
-  velocityX = 0;
-  rotationX.value = 0;
-  // If close to back (180deg), flip to front (-22deg); otherwise flip to 180deg
-  const normY = ((rotationY.value % 360) + 360) % 360;
-  if (Math.abs(normY - 180) < 60) {
-    rotationY.value = -22;
-  } else {
-    rotationY.value = 180;
-  }
+  onDoubleTap();
 }
 
 function openReader() {
